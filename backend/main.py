@@ -181,6 +181,10 @@ def compute_rsi(series: pd.Series, period: int = 14) -> pd.Series:
     return rsi.fillna(0)
 
 
+def compute_ema(series: pd.Series, span: int) -> pd.Series:
+    return series.ewm(span=span, adjust=False).mean()
+
+
 def compute_indicators(df: pd.DataFrame) -> Dict[str, Any]:
     working = df.copy()
     working["ma5"] = working["close"].rolling(window=5).mean()
@@ -191,10 +195,37 @@ def compute_indicators(df: pd.DataFrame) -> Dict[str, Any]:
     working["vol5"] = working["volume"].rolling(window=5).mean()
     working["vol60"] = working["volume"].rolling(window=60).mean()
     working["rsi14"] = compute_rsi(working["close"], 14)
+    working["ema12"] = compute_ema(working["close"], 12)
+    working["ema26"] = compute_ema(working["close"], 26)
+    working["macd_diff"] = working["ema12"] - working["ema26"]
+    working["macd_dea"] = working["macd_diff"].ewm(span=9, adjust=False).mean()
+    working["macd_hist"] = (working["macd_diff"] - working["macd_dea"]) * 2
+
+    low_n = working["close"].rolling(window=9, min_periods=9).min()
+    high_n = working["close"].rolling(window=9, min_periods=9).max()
+    rsv = ((working["close"] - low_n) / (high_n - low_n).replace(0, pd.NA)) * 100
+    working["kdj_k"] = rsv.ewm(com=2, adjust=False).mean().fillna(50)
+    working["kdj_d"] = working["kdj_k"].ewm(com=2, adjust=False).mean().fillna(50)
+    working["kdj_j"] = (3 * working["kdj_k"] - 2 * working["kdj_d"]).fillna(50)
 
     latest = working.iloc[-1]
 
-    required = ["ma5", "ma10", "ma20", "ma25", "ma55", "vol5", "vol60", "rsi14"]
+    required = [
+        "ma5",
+        "ma10",
+        "ma20",
+        "ma25",
+        "ma55",
+        "vol5",
+        "vol60",
+        "rsi14",
+        "macd_diff",
+        "macd_dea",
+        "macd_hist",
+        "kdj_k",
+        "kdj_d",
+        "kdj_j",
+    ]
     if any(pd.isna(latest[col]) for col in required):
         raise ValueError("Not enough trading data to compute moving averages.")
 
@@ -209,6 +240,13 @@ def compute_indicators(df: pd.DataFrame) -> Dict[str, Any]:
         "vol5": round(float(latest["vol5"]), 2),
         "vol60": round(float(latest["vol60"]), 2),
         "rsi14": round(float(latest["rsi14"]), 2),
+        "volume_ratio": round(float(latest["volume"] / latest["vol5"]), 2) if latest["vol5"] else None,
+        "macd_diff": round(float(latest["macd_diff"]), 4),
+        "macd_dea": round(float(latest["macd_dea"]), 4),
+        "macd_hist": round(float(latest["macd_hist"]), 4),
+        "kdj_k": round(float(latest["kdj_k"]), 2),
+        "kdj_d": round(float(latest["kdj_d"]), 2),
+        "kdj_j": round(float(latest["kdj_j"]), 2),
         "date": latest["date"].strftime("%Y-%m-%d"),
     }
 
@@ -282,6 +320,65 @@ def build_model_signals(snapshot: Dict[str, Any]) -> List[Dict[str, Any]]:
         }
     )
 
+    macd_score = 0
+    macd_signals: List[str] = []
+    if indicators["macd_diff"] > indicators["macd_dea"]:
+        macd_score += 1
+        macd_signals.append("MACD DIFF > DEA")
+    if indicators["macd_hist"] > 0:
+        macd_score += 1
+        macd_signals.append("MACD histogram > 0")
+
+    models.append(
+        {
+            "id": "macd_trend",
+            "name": "MACD Trend",
+            "bias": "bullish" if macd_score >= 2 else "neutral",
+            "score": macd_score,
+            "signals": macd_signals,
+        }
+    )
+
+    kdj_score = 0
+    kdj_signals: List[str] = [f"K={indicators['kdj_k']}", f"D={indicators['kdj_d']}", f"J={indicators['kdj_j']}"]
+    if indicators["kdj_k"] > indicators["kdj_d"]:
+        kdj_score += 1
+        kdj_signals.append("KDJ K > D")
+    if indicators["kdj_j"] < 20:
+        kdj_signals.append("KDJ J in oversold zone")
+    elif indicators["kdj_j"] > 80:
+        kdj_signals.append("KDJ J in overbought zone")
+
+    models.append(
+        {
+            "id": "kdj_momentum",
+            "name": "KDJ Momentum",
+            "bias": "bullish" if kdj_score >= 1 else "neutral",
+            "score": kdj_score,
+            "signals": kdj_signals,
+        }
+    )
+
+    activity_score = 0
+    activity_signals: List[str] = []
+    if indicators["volume_ratio"] is not None and indicators["volume_ratio"] >= 1.2:
+        activity_score += 1
+        activity_signals.append("Volume ratio >= 1.2")
+    turnover_rate = realtime.get("turnover_rate")
+    if turnover_rate is not None and turnover_rate >= 2:
+        activity_score += 1
+        activity_signals.append("Turnover rate >= 2")
+
+    models.append(
+        {
+            "id": "activity_filter",
+            "name": "Volume Ratio / Turnover",
+            "bias": "active" if activity_score >= 1 else "quiet",
+            "score": activity_score,
+            "signals": activity_signals,
+        }
+    )
+
     return models
 
 
@@ -331,11 +428,64 @@ def build_rule_analysis(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def build_technical_analysis(snapshot: Dict[str, Any]) -> Dict[str, Any]:
+    rule_analysis = build_rule_analysis(snapshot)
+    return {
+        "summary": rule_analysis["summary"],
+        "detail": rule_analysis["detail"],
+        "aggregate_score": rule_analysis["aggregate_score"],
+        "signals": rule_analysis["signals"],
+        "models": rule_analysis["models"],
+        "engine": rule_analysis["engine"],
+    }
+
+
+def build_risk_assessment(snapshot: Dict[str, Any]) -> Dict[str, Any]:
+    indicators = snapshot["indicators"]
+    realtime = snapshot["realtime"]
+    risks: List[str] = ["A-share T+1 settlement constraint applies."]
+    level = "medium"
+
+    if realtime.get("change_percent") is not None and abs(realtime["change_percent"]) >= 5:
+        risks.append("Large intraday move increases reversal risk.")
+        level = "high"
+
+    if indicators["rsi14"] > 70:
+        risks.append("RSI14 is in overbought territory.")
+        level = "high"
+    elif indicators["rsi14"] < 30:
+        risks.append("RSI14 is in oversold territory; rebound setups can still fail.")
+
+    if realtime.get("turnover_rate") is not None and realtime["turnover_rate"] < 1:
+        risks.append("Low turnover rate may reduce signal reliability.")
+
+    return {
+        "level": level,
+        "items": risks,
+    }
+
+
+def build_final_decision(snapshot: Dict[str, Any]) -> Dict[str, Any]:
+    technical = build_technical_analysis(snapshot)
+    risk = build_risk_assessment(snapshot)
+
+    bias = "watch"
+    if technical["aggregate_score"] >= 5 and risk["level"] != "high":
+        bias = "bullish_watch"
+    elif technical["aggregate_score"] <= 2:
+        bias = "avoid_chasing"
+
+    return {
+        "bias": bias,
+        "note": "Decision support only. No automated execution.",
+    }
+
+
 def build_llm_prompt(snapshot: Dict[str, Any]) -> str:
     return (
         "You are a disciplined A-share market analysis assistant. "
         "Given the JSON snapshot below, produce a short analysis in JSON with keys: "
-        "summary, detail, risk, action_bias. "
+        "bull_case, bear_case, referee. "
         "Do not provide execution instructions, guarantees, or promises. "
         "Keep it factual, concise, and suitable for a decision-support dashboard.\n\n"
         f"{json.dumps(snapshot, ensure_ascii=False)}"
@@ -355,7 +505,7 @@ def generate_llm_analysis(snapshot: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                     "role": "system",
                     "content": (
                         "You are a disciplined A-share market analysis assistant. "
-                        "Return concise JSON only."
+                        "Return concise JSON only with keys bull_case, bear_case, referee."
                     ),
                 },
                 {
@@ -407,19 +557,24 @@ def build_snapshot(code: str, include_llm: bool) -> Dict[str, Any]:
     history_df, history_source = fetch_stock_history(code)
     indicators = compute_indicators(history_df)
     realtime = fetch_realtime_quote(code)
+    core_snapshot = {
+        "code": code,
+        "realtime": realtime,
+        "indicators": indicators,
+    }
+    technical_analysis = build_technical_analysis(core_snapshot)
+    risk_assessment = build_risk_assessment(core_snapshot)
+    final_decision = build_final_decision(core_snapshot)
 
     snapshot = {
         "code": code,
         "name": realtime["name"],
         "realtime": realtime,
         "indicators": indicators,
-        "analysis": build_rule_analysis(
-            {
-                "code": code,
-                "realtime": realtime,
-                "indicators": indicators,
-            }
-        ),
+        "analysis": technical_analysis,
+        "technical_analysis": technical_analysis,
+        "risk_assessment": risk_assessment,
+        "final_decision": final_decision,
         "meta": {
             "market": "CN-A",
             "history_source": history_source,
@@ -493,11 +648,43 @@ def get_close_analysis(
 
     recommendation = {
         "engine": "close_signal_v1",
-        "bias": "hold_for_review" if snapshot["analysis"]["summary"] == "bullish short-term" else "reduce_risk",
+        "bias": "hold_for_review" if snapshot["final_decision"]["bias"] == "bullish_watch" else "reduce_risk",
         "note": "Tail-session decision support only. This API does not execute trades.",
     }
 
     return {
         **snapshot,
         "close_signal": recommendation,
+    }
+
+
+@app.get("/watchlist/analyze")
+def analyze_watchlist(
+    codes: str = Query(..., description="Comma-separated 6-digit stock codes"),
+    use_llm: bool = Query(False),
+) -> Dict[str, Any]:
+    parsed_codes = [code.strip() for code in codes.split(",") if code.strip()]
+    if not parsed_codes:
+        raise HTTPException(status_code=400, detail="No stock codes provided.")
+
+    results: List[Dict[str, Any]] = []
+    errors: List[Dict[str, str]] = []
+
+    for code in parsed_codes[:20]:
+        if not code.isdigit() or len(code) != 6:
+            errors.append({"code": code, "detail": "Invalid 6-digit stock code."})
+            continue
+        try:
+            results.append(build_snapshot(code, include_llm=use_llm))
+        except ValueError as exc:
+            errors.append({"code": code, "detail": str(exc)})
+
+    return {
+        "results": results,
+        "errors": errors,
+        "meta": {
+            "requested_count": len(parsed_codes),
+            "processed_count": len(results),
+            "error_count": len(errors),
+        },
     }

@@ -115,7 +115,11 @@ function renderLlmAnalysis(llmAnalysis) {
 
   if (llmAnalysis.status === "ok" && llmAnalysis.content) {
     const content = llmAnalysis.content;
-    llmOutputEl.textContent = `${content.summary || "No summary"}: ${content.detail || "No detail"}`;
+    llmOutputEl.textContent = [
+      `Bull: ${content.bull_case || "No bull case."}`,
+      `Bear: ${content.bear_case || "No bear case."}`,
+      `Referee: ${content.referee || "No referee summary."}`,
+    ].join("\n");
     return;
   }
 
@@ -127,13 +131,23 @@ function renderLlmAnalysis(llmAnalysis) {
   llmOutputEl.textContent = "GPT analysis did not return usable content.";
 }
 
-function renderCloseSignal(closeSignal = {}) {
-  if (!closeSignal.note) {
-    closeSignalOutputEl.textContent = "No close-session bias yet.";
+function renderCloseSignal(closeSignal = {}, riskAssessment = {}, finalDecision = {}) {
+  if (!closeSignal.note && !finalDecision.note) {
+    closeSignalOutputEl.textContent = "No decision signal yet.";
     return;
   }
 
-  closeSignalOutputEl.textContent = `${closeSignal.bias}: ${closeSignal.note}`;
+  const lines = [];
+  if (finalDecision.bias) {
+    lines.push(`Decision: ${finalDecision.bias} | ${finalDecision.note || ""}`);
+  }
+  if (riskAssessment.level || Array.isArray(riskAssessment.items)) {
+    lines.push(`Risk: ${riskAssessment.level || "-"} | ${(riskAssessment.items || []).join(" ")}`);
+  }
+  if (closeSignal.note) {
+    lines.push(`Close: ${closeSignal.bias} | ${closeSignal.note}`);
+  }
+  closeSignalOutputEl.textContent = lines.join("\n");
 }
 
 async function analyzeStock() {
@@ -203,7 +217,7 @@ async function analyzeStock() {
         renderIndicators({});
         renderRuleAnalysis({});
         renderLlmAnalysis(null);
-        renderCloseSignal({});
+        renderCloseSignal({}, {}, {});
         return;
       }
 
@@ -214,7 +228,7 @@ async function analyzeStock() {
     renderIndicators(stockData.indicators);
     renderRuleAnalysis(stockData.analysis);
     renderLlmAnalysis(stockData.llm_analysis);
-    renderCloseSignal(closeData.close_signal);
+    renderCloseSignal(closeData.close_signal, stockData.risk_assessment, stockData.final_decision);
     jsonOutputEl.textContent = JSON.stringify({ stock: stockData, close: closeData }, null, 2);
     setStatus(`Loaded ${stockData.code} ${stockData.name || ""} at ${stockData.realtime.quote_time}.`);
   } catch (error) {
@@ -223,7 +237,7 @@ async function analyzeStock() {
     renderIndicators({});
     renderRuleAnalysis({});
     renderLlmAnalysis(null);
-    renderCloseSignal({});
+    renderCloseSignal({}, {}, {});
     jsonOutputEl.textContent = "Request failed.";
   } finally {
     analyzeBtn.disabled = false;

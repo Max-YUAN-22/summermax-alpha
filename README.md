@@ -12,7 +12,8 @@ SummerMax Quant Alpha is a minimal decision-support app for Chinese A-share anal
 
 - realtime quote snapshots
 - 60-day daily technical indicators
-- rule-based trend interpretation
+- multi-model rule-based trend interpretation
+- structured technical, risk, and final-decision layers
 - optional GPT interpretation through the OpenAI API
 - compatible with OpenAI-style gateways that expose `/v1/chat/completions`
 
@@ -35,10 +36,11 @@ summermax-alpha/
 
 - Input a 6-digit A-share stock code such as `300059`
 - Fetch realtime quote data from `AKShare stock_zh_a_spot_em`
-- Fetch 60 trading-day historical data from `AKShare stock_zh_a_hist`
-- Compute `MA5`, `MA10`, `MA20`
-- Return rule-based analysis and close-session bias
-- Optionally call OpenAI for GPT interpretation
+- Fetch 60 trading-day historical data with fallback data sources
+- Compute `MA5`, `MA10`, `MA20`, `MA25`, `MA55`, `RSI14`, `MACD`, `KDJ`, `VOL5`, `VOL60`
+- Return `technical_analysis`, `risk_assessment`, and `final_decision`
+- Support watchlist batch scanning
+- Optionally call OpenAI for bull-case / bear-case / referee interpretation
 - Keep response structure ready for chat tool integration
 
 ## API Endpoints
@@ -57,7 +59,9 @@ Returns:
 
 - realtime quote snapshot
 - technical indicators
-- rule-based analysis
+- technical analysis
+- risk assessment
+- final decision
 - optional GPT analysis
 
 ### `GET /analysis/close?code=300059&use_llm=false`
@@ -65,6 +69,10 @@ Returns:
 Returns the same stock snapshot plus a close-session bias block.
 
 This is for end-of-session decision support only. It does not place orders.
+
+### `GET /watchlist/analyze?codes=300059,600519,000001&use_llm=false`
+
+Returns a batch scan result for up to 20 stock codes, including per-code errors.
 
 ## Example Response
 
@@ -95,28 +103,61 @@ This is for end-of-session decision support only. It does not place orders.
     "ma5": 12.11,
     "ma10": 11.98,
     "ma20": 11.42,
+    "ma25": 11.21,
+    "ma55": 10.92,
     "volume": 3456789.0,
+    "vol5": 3654321.0,
+    "vol60": 2456789.0,
+    "rsi14": 61.45,
+    "volume_ratio": 1.31,
+    "macd_diff": 0.1245,
+    "macd_dea": 0.1011,
+    "macd_hist": 0.0468,
+    "kdj_k": 67.22,
+    "kdj_d": 61.10,
+    "kdj_j": 79.46,
     "date": "2026-06-17"
   },
-  "analysis": {
-    "engine": "rules_v2",
-    "summary": "bullish short-term",
-    "detail": "MA5 is above MA10, which suggests short-term upward momentum.",
+  "technical_analysis": {
+    "engine": "rules_v3",
+    "summary": "multi-model bullish",
+    "detail": "Multiple rule models are aligned on the long side.",
+    "aggregate_score": 6,
     "signals": [
       "MA5 > MA10",
       "Realtime price > MA20",
       "Intraday strength >= 2%"
     ],
-    "next_step": "This block can be replaced or augmented by a GPT analysis layer."
+    "models": [
+      {
+        "id": "ma5_25_vol5_60",
+        "name": "MA5-25 / VOL5-60",
+        "bias": "bullish",
+        "score": 2,
+        "signals": [
+          "MA5 > MA25",
+          "VOL5 > VOL60"
+        ]
+      }
+    ]
+  },
+  "risk_assessment": {
+    "level": "medium",
+    "items": [
+      "A-share T+1 settlement constraint applies."
+    ]
+  },
+  "final_decision": {
+    "bias": "bullish_watch",
+    "note": "Decision support only. No automated execution."
   },
   "llm_analysis": {
     "engine": "gpt-5.5",
     "status": "ok",
     "content": {
-      "summary": "short-term momentum remains constructive",
-      "detail": "Price is above medium-term average and intraday strength is positive, but this is still only a short-horizon signal.",
-      "risk": "Late-session reversal risk remains.",
-      "action_bias": "monitor into close"
+      "bull_case": "Multiple momentum and trend models are aligned.",
+      "bear_case": "Short-term reversals can still happen if intraday strength fades.",
+      "referee": "Setup is constructive, but must be weighed against T+1 and late-session volatility."
     }
   }
 }
@@ -182,6 +223,7 @@ curl "http://127.0.0.1:8000/quote/realtime?code=300059"
 curl "http://127.0.0.1:8000/stock?code=300059"
 curl "http://127.0.0.1:8000/stock?code=300059&use_llm=true"
 curl "http://127.0.0.1:8000/analysis/close?code=300059&use_llm=true"
+curl "http://127.0.0.1:8000/watchlist/analyze?codes=300059,600519,000001"
 ```
 
 ## Frontend
@@ -256,6 +298,7 @@ This backend is already structured for later chat tool integration. For example,
 - `GET /quote/realtime?code=300059`
 - `GET /stock?code=300059&use_llm=true`
 - `GET /analysis/close?code=300059&use_llm=true`
+- `GET /watchlist/analyze?codes=300059,600519,000001&use_llm=false`
 
 That is the correct way to let a chat assistant read current A-share market data before producing analysis.
 
