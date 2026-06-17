@@ -144,6 +144,8 @@ On Windows:
 pip install -r requirements.txt
 ```
 
+This project is intended to run on Python `3.11.x`. A repository-level [.python-version](/Users/Apple/Documents/Codex/2026-06-18/new-chat/summermax-alpha/.python-version) file is included for deployment consistency.
+
 ### 3. Configure environment variables
 
 Optional for GPT analysis:
