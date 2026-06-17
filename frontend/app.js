@@ -1,3 +1,5 @@
+// redeploy pages
+
 const apiBaseInput = document.getElementById("apiBase");
 const stockCodeInput = document.getElementById("stockCode");
 const useLlmInput = document.getElementById("useLlm");
