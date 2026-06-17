@@ -1,10 +1,11 @@
-// redeploy pages
+const DEFAULT_API_BASE = "https://summermax-alpha-api.onrender.com";
 
 const apiBaseInput = document.getElementById("apiBase");
 const stockCodeInput = document.getElementById("stockCode");
 const useLlmInput = document.getElementById("useLlm");
 const analyzeBtn = document.getElementById("analyzeBtn");
 const statusEl = document.getElementById("status");
+const setupNoteEl = document.getElementById("setupNote");
 const realtimeMetricsEl = document.getElementById("realtimeMetrics");
 const indicatorMetricsEl = document.getElementById("indicatorMetrics");
 const analysisOutputEl = document.getElementById("analysisOutput");
@@ -16,11 +17,23 @@ const jsonOutputEl = document.getElementById("jsonOutput");
 const savedApiBase = localStorage.getItem("summermax-alpha-api-base");
 if (savedApiBase) {
   apiBaseInput.value = savedApiBase;
+} else if (DEFAULT_API_BASE) {
+  apiBaseInput.value = DEFAULT_API_BASE;
 }
 
 function setStatus(message, isError = false) {
   statusEl.textContent = message;
   statusEl.classList.toggle("error", isError);
+}
+
+function updateSetupNote() {
+  const apiBase = normalizeApiBase(apiBaseInput.value);
+  if (apiBase) {
+    setupNoteEl.hidden = true;
+    return;
+  }
+
+  setupNoteEl.hidden = false;
 }
 
 function normalizeApiBase(input) {
@@ -125,7 +138,8 @@ async function analyzeStock() {
   }
 
   if (!apiBase) {
-    setStatus("Please enter your backend API base URL.", true);
+    setStatus("No realtime backend is connected. Enter a live backend API base URL first.", true);
+    updateSetupNote();
     return;
   }
 
@@ -142,22 +156,49 @@ async function analyzeStock() {
   signalsOutputEl.innerHTML = "";
 
   try {
+    const realtimeUrl = `${apiBase}/quote/realtime?code=${encodeURIComponent(code)}`;
     const stockUrl = `${apiBase}/stock?code=${encodeURIComponent(code)}&use_llm=${useLlm}`;
     const closeUrl = `${apiBase}/analysis/close?code=${encodeURIComponent(code)}&use_llm=${useLlm}`;
 
-    const [stockResponse, closeResponse] = await Promise.all([
+    const [realtimeResponse, stockResponse, closeResponse] = await Promise.all([
+      fetch(realtimeUrl),
       fetch(stockUrl),
       fetch(closeUrl),
     ]);
 
+    const realtimeData = await realtimeResponse.json();
     const stockData = await stockResponse.json();
     const closeData = await closeResponse.json();
 
-    if (!stockResponse.ok) {
-      throw new Error(stockData.detail || "Stock analysis request failed.");
+    if (realtimeResponse.ok) {
+      renderRealtime(realtimeData.realtime);
+    } else {
+      renderRealtime({});
     }
-    if (!closeResponse.ok) {
-      throw new Error(closeData.detail || "Close analysis request failed.");
+
+    if (!stockResponse.ok || !closeResponse.ok) {
+      const stockError = stockData.detail || "Stock analysis request failed.";
+      const closeError = closeData.detail || "Close analysis request failed.";
+
+      if (realtimeResponse.ok) {
+        setStatus(`Realtime quote loaded, but analysis failed: ${stockError}${closeResponse.ok ? "" : ` | ${closeError}`}`, true);
+        jsonOutputEl.textContent = JSON.stringify(
+          {
+            realtime: realtimeData,
+            stock_error: stockError,
+            close_error: closeResponse.ok ? null : closeError,
+          },
+          null,
+          2,
+        );
+        renderIndicators({});
+        renderRuleAnalysis({});
+        renderLlmAnalysis(null);
+        renderCloseSignal({});
+        return;
+      }
+
+      throw new Error(`${stockError}${closeResponse.ok ? "" : ` | ${closeError}`}`);
     }
 
     renderRealtime(stockData.realtime);
@@ -181,6 +222,7 @@ async function analyzeStock() {
 }
 
 analyzeBtn.addEventListener("click", analyzeStock);
+apiBaseInput.addEventListener("input", updateSetupNote);
 
 stockCodeInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
@@ -193,3 +235,5 @@ apiBaseInput.addEventListener("keydown", (event) => {
     analyzeStock();
   }
 });
+
+updateSetupNote();

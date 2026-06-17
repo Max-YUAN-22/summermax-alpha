@@ -147,6 +147,16 @@
         color: var(--danger);
       }
 
+      .setup-note {
+        margin: 14px 0 0;
+        padding: 14px 16px;
+        border-radius: 14px;
+        border: 1px solid rgba(177, 35, 24, 0.18);
+        background: rgba(177, 35, 24, 0.04);
+        color: var(--danger);
+        line-height: 1.6;
+      }
+
       .dashboard {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -262,6 +272,10 @@
         </div>
 
         <p id="status" class="status"></p>
+        <div id="setupNote" class="setup-note">
+          Realtime A-share analysis requires a live backend API. Connect a deployed backend URL
+          before this dashboard can fetch quotes and compute signals.
+        </div>
 
         <div class="dashboard">
           <article class="card">

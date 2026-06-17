@@ -44,11 +44,18 @@ def normalize_history_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty:
         raise ValueError("No historical stock data returned from data source.")
 
+    if "date" not in df.columns and "日期" not in df.columns:
+        df = df.reset_index()
+
     renamed = df.rename(
         columns={
             "日期": "date",
             "收盘": "close",
             "成交量": "volume",
+            "date": "date",
+            "close": "close",
+            "volume": "volume",
+            "index": "date",
         }
     )
 
@@ -68,22 +75,51 @@ def normalize_history_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     return normalized
 
 
-def fetch_stock_history(code: str) -> pd.DataFrame:
+def to_market_symbol(code: str) -> str:
+    if code.startswith(("4", "8")):
+        return f"bj{code}"
+    if code.startswith(("5", "6", "9")):
+        return f"sh{code}"
+    return f"sz{code}"
+
+
+def fetch_stock_history_from_em(code: str, start_date: datetime, end_date: datetime) -> pd.DataFrame:
+    raw_df = ak.stock_zh_a_hist(
+        symbol=code,
+        period="daily",
+        start_date=start_date.strftime("%Y%m%d"),
+        end_date=end_date.strftime("%Y%m%d"),
+        adjust="qfq",
+    )
+    return normalize_history_dataframe(raw_df)
+
+
+def fetch_stock_history_from_sina(code: str, start_date: datetime, end_date: datetime) -> pd.DataFrame:
+    raw_df = ak.stock_zh_a_daily(
+        symbol=to_market_symbol(code),
+        start_date=start_date.strftime("%Y%m%d"),
+        end_date=end_date.strftime("%Y%m%d"),
+        adjust="qfq",
+    )
+    return normalize_history_dataframe(raw_df)
+
+
+def fetch_stock_history(code: str) -> tuple[pd.DataFrame, str]:
     end_date = datetime.today()
     start_date = end_date - timedelta(days=120)
+    errors: List[str] = []
 
     try:
-        raw_df = ak.stock_zh_a_hist(
-            symbol=code,
-            period="daily",
-            start_date=start_date.strftime("%Y%m%d"),
-            end_date=end_date.strftime("%Y%m%d"),
-            adjust="qfq",
-        )
+        return fetch_stock_history_from_em(code, start_date, end_date).tail(60).reset_index(drop=True), "akshare.stock_zh_a_hist"
     except Exception as exc:
-        raise ValueError(f"Failed to fetch historical stock data: {exc}") from exc
+        errors.append(f"eastmoney history failed: {exc}")
 
-    return normalize_history_dataframe(raw_df).tail(60).reset_index(drop=True)
+    try:
+        return fetch_stock_history_from_sina(code, start_date, end_date).tail(60).reset_index(drop=True), "akshare.stock_zh_a_daily"
+    except Exception as exc:
+        errors.append(f"sina history failed: {exc}")
+
+    raise ValueError(f"Failed to fetch historical stock data: {' | '.join(errors)}")
 
 
 def normalize_realtime_dataframe(df: pd.DataFrame) -> pd.DataFrame:
@@ -263,7 +299,7 @@ def generate_llm_analysis(snapshot: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 
 def build_snapshot(code: str, include_llm: bool) -> Dict[str, Any]:
-    history_df = fetch_stock_history(code)
+    history_df, history_source = fetch_stock_history(code)
     indicators = compute_indicators(history_df)
     realtime = fetch_realtime_quote(code)
 
@@ -281,7 +317,7 @@ def build_snapshot(code: str, include_llm: bool) -> Dict[str, Any]:
         ),
         "meta": {
             "market": "CN-A",
-            "history_source": "akshare.stock_zh_a_hist",
+            "history_source": history_source,
             "realtime_source": "akshare.stock_zh_a_spot_em",
             "lookback_trading_days": 60,
             "adjustment": "qfq",
