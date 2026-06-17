@@ -35,8 +35,7 @@ summermax-alpha/
 ## Features
 
 - Input a 6-digit A-share stock code such as `300059`
-- Fetch realtime quote data from `AKShare stock_zh_a_spot_em`
-- Use fallback realtime quote sources when the primary source is unstable
+- Fetch realtime quote data from direct public quote endpoints with AKShare fallback
 - Fetch 60 trading-day historical data with fallback data sources
 - Compute `MA5`, `MA10`, `MA20`, `MA25`, `MA55`, `RSI14`, `MACD`, `KDJ`, `VOL5`, `VOL60`
 - Return `technical_analysis`, `risk_assessment`, and `final_decision`

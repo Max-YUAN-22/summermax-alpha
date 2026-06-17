@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 
 import akshare as ak
 import pandas as pd
+import requests
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
@@ -27,6 +28,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+DEFAULT_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json,text/plain,*/*",
+}
 
 
 def get_openai_client() -> Optional[OpenAI]:
@@ -81,6 +90,12 @@ def to_market_symbol(code: str) -> str:
     if code.startswith(("5", "6", "9")):
         return f"sh{code}"
     return f"sz{code}"
+
+
+def to_secid(code: str) -> str:
+    if code.startswith(("5", "6", "9")):
+        return f"1.{code}"
+    return f"0.{code}"
 
 
 def fetch_stock_history_from_em(code: str, start_date: datetime, end_date: datetime) -> pd.DataFrame:
@@ -151,6 +166,95 @@ def build_realtime_payload(row: pd.Series, code: str, source: str) -> Dict[str, 
     }
 
 
+def scaled_float(value: Any, divisor: float = 100) -> Optional[float]:
+    raw = safe_float(value)
+    if raw is None:
+        return None
+    return round(raw / divisor, 2)
+
+
+def fetch_realtime_quote_from_eastmoney_direct(code: str) -> Dict[str, Any]:
+    response = requests.get(
+        "https://push2.eastmoney.com/api/qt/stock/get",
+        params={
+            "secid": to_secid(code),
+            "fields": "f43,f44,f45,f46,f47,f48,f57,f58,f60,f168,f169,f170",
+        },
+        headers=DEFAULT_HEADERS,
+        timeout=10,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    data = payload.get("data") or {}
+    if not data:
+        raise ValueError("No Eastmoney direct quote payload returned.")
+
+    return {
+        "code": str(data.get("f57") or code),
+        "name": str(data.get("f58") or ""),
+        "price": scaled_float(data.get("f43")),
+        "change_percent": scaled_float(data.get("f170")),
+        "change_amount": scaled_float(data.get("f169")),
+        "volume": safe_float(data.get("f47")),
+        "amount": safe_float(data.get("f48")),
+        "amplitude": None,
+        "high": scaled_float(data.get("f44")),
+        "low": scaled_float(data.get("f45")),
+        "open": scaled_float(data.get("f46")),
+        "pre_close": scaled_float(data.get("f60")),
+        "turnover_rate": scaled_float(data.get("f168")),
+        "pe_ratio": None,
+        "pb_ratio": None,
+        "quote_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "source": "eastmoney.push2.direct",
+    }
+
+
+def fetch_realtime_quote_from_sina_direct(code: str) -> Dict[str, Any]:
+    symbol = to_market_symbol(code)
+    response = requests.get(
+        f"https://hq.sinajs.cn/list={symbol}",
+        headers={
+            **DEFAULT_HEADERS,
+            "Referer": "https://finance.sina.com.cn/",
+        },
+        timeout=10,
+    )
+    response.raise_for_status()
+    text = response.text
+    if "=" not in text:
+        raise ValueError("Unexpected Sina quote response.")
+    quote = text.split("=", 1)[1].strip().strip(";").strip('"')
+    parts = quote.split(",")
+    if len(parts) < 32:
+        raise ValueError("Incomplete Sina quote response.")
+
+    price = safe_float(parts[3])
+    pre_close = safe_float(parts[2])
+    change_amount = round(price - pre_close, 2) if price is not None and pre_close is not None else None
+    change_percent = round((change_amount / pre_close) * 100, 2) if change_amount is not None and pre_close else None
+
+    return {
+        "code": code,
+        "name": parts[0],
+        "price": price,
+        "change_percent": change_percent,
+        "change_amount": change_amount,
+        "volume": safe_float(parts[8]),
+        "amount": safe_float(parts[9]),
+        "amplitude": None,
+        "high": safe_float(parts[4]),
+        "low": safe_float(parts[5]),
+        "open": safe_float(parts[1]),
+        "pre_close": pre_close,
+        "turnover_rate": None,
+        "pe_ratio": None,
+        "pb_ratio": None,
+        "quote_time": f"{parts[30]} {parts[31]}",
+        "source": "sina.hq.direct",
+    }
+
+
 def fetch_realtime_quote_from_em(code: str) -> Dict[str, Any]:
     realtime_df = normalize_realtime_dataframe(ak.stock_zh_a_spot_em())
     matched = realtime_df[realtime_df["代码"].astype(str) == code]
@@ -188,6 +292,16 @@ def fetch_realtime_quote_from_individual(code: str) -> Dict[str, Any]:
 
 def fetch_realtime_quote(code: str) -> Dict[str, Any]:
     errors: List[str] = []
+
+    try:
+        return fetch_realtime_quote_from_eastmoney_direct(code)
+    except Exception as exc:
+        errors.append(f"eastmoney direct failed: {exc}")
+
+    try:
+        return fetch_realtime_quote_from_sina_direct(code)
+    except Exception as exc:
+        errors.append(f"sina direct failed: {exc}")
 
     try:
         return fetch_realtime_quote_from_em(code)
