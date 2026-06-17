@@ -208,6 +208,8 @@ This repository includes [render.yaml](/Users/Apple/Documents/Codex/2026-06-18/n
 4. Create the web service
 5. In the Render dashboard, fill `OPENAI_API_KEY` when you want GPT analysis enabled
 
+The included blueprint is set to the `free` plan to avoid requiring payment information for initial deployment.
+
 ### Render environment variables
 
 - `OPENAI_API_KEY`: set manually in the Render dashboard
