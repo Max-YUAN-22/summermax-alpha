@@ -129,18 +129,7 @@ def normalize_realtime_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     return df.copy()
 
 
-def fetch_realtime_quote(code: str) -> Dict[str, Any]:
-    try:
-        realtime_df = normalize_realtime_dataframe(ak.stock_zh_a_spot_em())
-    except Exception as exc:
-        raise ValueError(f"Failed to fetch realtime quote data: {exc}") from exc
-
-    matched = realtime_df[realtime_df["代码"].astype(str) == code]
-    if matched.empty:
-        raise ValueError("Invalid stock code or realtime quote not available.")
-
-    row = matched.iloc[0]
-
+def build_realtime_payload(row: pd.Series, code: str, source: str) -> Dict[str, Any]:
     return {
         "code": code,
         "name": str(row.get("名称", "")),
@@ -158,7 +147,59 @@ def fetch_realtime_quote(code: str) -> Dict[str, Any]:
         "pe_ratio": safe_float(row.get("市盈率-动态")),
         "pb_ratio": safe_float(row.get("市净率")),
         "quote_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "source": source,
     }
+
+
+def fetch_realtime_quote_from_em(code: str) -> Dict[str, Any]:
+    realtime_df = normalize_realtime_dataframe(ak.stock_zh_a_spot_em())
+    matched = realtime_df[realtime_df["代码"].astype(str) == code]
+    if matched.empty:
+        raise ValueError("Invalid stock code or realtime quote not available.")
+    return build_realtime_payload(matched.iloc[0], code, "akshare.stock_zh_a_spot_em")
+
+
+def fetch_realtime_quote_from_individual(code: str) -> Dict[str, Any]:
+    info_df = ak.stock_individual_info_em(symbol=code)
+    if info_df is None or info_df.empty:
+        raise ValueError("No individual quote data returned from data source.")
+
+    info_map = dict(zip(info_df.iloc[:, 0], info_df.iloc[:, 1]))
+    return {
+        "code": code,
+        "name": str(info_map.get("股票简称", "")),
+        "price": safe_float(info_map.get("最新")),
+        "change_percent": safe_float(info_map.get("涨跌幅")),
+        "change_amount": safe_float(info_map.get("涨跌额")),
+        "volume": safe_float(info_map.get("总手")),
+        "amount": safe_float(info_map.get("成交额")),
+        "amplitude": safe_float(info_map.get("振幅")),
+        "high": safe_float(info_map.get("最高")),
+        "low": safe_float(info_map.get("最低")),
+        "open": safe_float(info_map.get("今开")),
+        "pre_close": safe_float(info_map.get("昨收")),
+        "turnover_rate": safe_float(info_map.get("换手率")),
+        "pe_ratio": safe_float(info_map.get("市盈率(动态)")),
+        "pb_ratio": safe_float(info_map.get("市净率")),
+        "quote_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "source": "akshare.stock_individual_info_em",
+    }
+
+
+def fetch_realtime_quote(code: str) -> Dict[str, Any]:
+    errors: List[str] = []
+
+    try:
+        return fetch_realtime_quote_from_em(code)
+    except Exception as exc:
+        errors.append(f"spot_em failed: {exc}")
+
+    try:
+        return fetch_realtime_quote_from_individual(code)
+    except Exception as exc:
+        errors.append(f"individual_info_em failed: {exc}")
+
+    raise ValueError(f"Failed to fetch realtime quote data: {' | '.join(errors)}")
 
 
 def safe_float(value: Any) -> Optional[float]:
