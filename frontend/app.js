@@ -76,7 +76,11 @@ function renderIndicators(indicators = {}) {
     createMetric("MA5", formatNumber(indicators.ma5)),
     createMetric("MA10", formatNumber(indicators.ma10)),
     createMetric("MA20", formatNumber(indicators.ma20)),
-    createMetric("Volume", formatNumber(indicators.volume)),
+    createMetric("MA25", formatNumber(indicators.ma25)),
+    createMetric("MA55", formatNumber(indicators.ma55)),
+    createMetric("RSI14", formatNumber(indicators.rsi14)),
+    createMetric("VOL5", formatNumber(indicators.vol5)),
+    createMetric("VOL60", formatNumber(indicators.vol60)),
     createMetric("Date", indicators.date || "-"),
   ].join("");
 }
@@ -89,7 +93,12 @@ function renderRuleAnalysis(analysis = {}) {
   }
 
   analysisOutputEl.textContent = `${analysis.summary}: ${analysis.detail}`;
-  const signals = analysis.signals || [];
+  const signals = [...(analysis.signals || [])];
+  if (Array.isArray(analysis.models)) {
+    analysis.models.forEach((model) => {
+      signals.push(`${model.name}: ${model.bias} (score ${model.score})`);
+    });
+  }
   signalsOutputEl.innerHTML = signals.map((signal) => `<li>${signal}</li>`).join("");
 }
 

@@ -170,15 +170,32 @@ def safe_float(value: Any) -> Optional[float]:
         return None
 
 
+def compute_rsi(series: pd.Series, period: int = 14) -> pd.Series:
+    delta = series.diff()
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    avg_gain = gain.rolling(window=period, min_periods=period).mean()
+    avg_loss = loss.rolling(window=period, min_periods=period).mean()
+    rs = avg_gain / avg_loss.replace(0, pd.NA)
+    rsi = 100 - (100 / (1 + rs))
+    return rsi.fillna(0)
+
+
 def compute_indicators(df: pd.DataFrame) -> Dict[str, Any]:
     working = df.copy()
     working["ma5"] = working["close"].rolling(window=5).mean()
     working["ma10"] = working["close"].rolling(window=10).mean()
     working["ma20"] = working["close"].rolling(window=20).mean()
+    working["ma25"] = working["close"].rolling(window=25).mean()
+    working["ma55"] = working["close"].rolling(window=55).mean()
+    working["vol5"] = working["volume"].rolling(window=5).mean()
+    working["vol60"] = working["volume"].rolling(window=60).mean()
+    working["rsi14"] = compute_rsi(working["close"], 14)
 
     latest = working.iloc[-1]
 
-    if pd.isna(latest["ma5"]) or pd.isna(latest["ma10"]) or pd.isna(latest["ma20"]):
+    required = ["ma5", "ma10", "ma20", "ma25", "ma55", "vol5", "vol60", "rsi14"]
+    if any(pd.isna(latest[col]) for col in required):
         raise ValueError("Not enough trading data to compute moving averages.")
 
     return {
@@ -186,15 +203,94 @@ def compute_indicators(df: pd.DataFrame) -> Dict[str, Any]:
         "ma5": round(float(latest["ma5"]), 2),
         "ma10": round(float(latest["ma10"]), 2),
         "ma20": round(float(latest["ma20"]), 2),
+        "ma25": round(float(latest["ma25"]), 2),
+        "ma55": round(float(latest["ma55"]), 2),
         "volume": round(float(latest["volume"]), 2),
+        "vol5": round(float(latest["vol5"]), 2),
+        "vol60": round(float(latest["vol60"]), 2),
+        "rsi14": round(float(latest["rsi14"]), 2),
         "date": latest["date"].strftime("%Y-%m-%d"),
     }
+
+
+def build_model_signals(snapshot: Dict[str, Any]) -> List[Dict[str, Any]]:
+    indicators = snapshot["indicators"]
+    realtime = snapshot["realtime"]
+    models: List[Dict[str, Any]] = []
+
+    ma25_60_score = 0
+    ma25_60_signals: List[str] = []
+    if indicators["ma5"] > indicators["ma25"]:
+        ma25_60_score += 1
+        ma25_60_signals.append("MA5 > MA25")
+    if indicators["vol5"] > indicators["vol60"]:
+        ma25_60_score += 1
+        ma25_60_signals.append("VOL5 > VOL60")
+    if abs(indicators["ma5"] - indicators["ma25"]) / max(indicators["ma25"], 0.01) < 0.01:
+        ma25_60_signals.append("MA5 close to MA25")
+
+    models.append(
+        {
+            "id": "ma5_25_vol5_60",
+            "name": "MA5-25 / VOL5-60",
+            "bias": "bullish" if ma25_60_score >= 2 else "neutral",
+            "score": ma25_60_score,
+            "signals": ma25_60_signals,
+        }
+    )
+
+    rsi_bias = "neutral"
+    rsi_signals: List[str] = [f"RSI14={indicators['rsi14']}"]
+    rsi_score = 0
+    if 50 <= indicators["rsi14"] <= 70:
+        rsi_bias = "bullish"
+        rsi_score = 1
+        rsi_signals.append("RSI14 in bullish momentum range")
+    elif indicators["rsi14"] < 30:
+        rsi_bias = "oversold_rebound_watch"
+        rsi_signals.append("RSI14 below 30")
+    elif indicators["rsi14"] > 70:
+        rsi_bias = "overbought_watch"
+        rsi_signals.append("RSI14 above 70")
+
+    models.append(
+        {
+            "id": "rsi14_70",
+            "name": "RSI14-70",
+            "bias": rsi_bias,
+            "score": rsi_score,
+            "signals": rsi_signals,
+        }
+    )
+
+    ma20_55_score = 0
+    ma20_55_signals: List[str] = []
+    if indicators["ma20"] > indicators["ma55"]:
+        ma20_55_score += 1
+        ma20_55_signals.append("MA20 > MA55")
+    if realtime["price"] is not None and realtime["price"] > indicators["ma20"]:
+        ma20_55_score += 1
+        ma20_55_signals.append("Realtime price > MA20")
+
+    models.append(
+        {
+            "id": "ma20_55_trend",
+            "name": "MA20-55 Trend",
+            "bias": "bullish" if ma20_55_score >= 2 else "neutral",
+            "score": ma20_55_score,
+            "signals": ma20_55_signals,
+        }
+    )
+
+    return models
 
 
 def build_rule_analysis(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     indicators = snapshot["indicators"]
     realtime = snapshot["realtime"]
     signals: List[str] = []
+    models = build_model_signals(snapshot)
+    aggregate_score = sum(model["score"] for model in models)
 
     if indicators["ma5"] > indicators["ma10"]:
         summary = "bullish short-term"
@@ -217,11 +313,20 @@ def build_rule_analysis(snapshot: Dict[str, Any]) -> Dict[str, Any]:
         elif realtime["change_percent"] <= -2:
             signals.append("Intraday weakness <= -2%")
 
+    if aggregate_score >= 4:
+        summary = "multi-model bullish"
+        detail = "Multiple rule models are aligned on the long side."
+    elif aggregate_score <= 1:
+        summary = "weak or mixed setup"
+        detail = "The current rule models do not show a strong aligned setup."
+
     return {
-        "engine": "rules_v2",
+        "engine": "rules_v3",
         "summary": summary,
         "detail": detail,
         "signals": signals,
+        "models": models,
+        "aggregate_score": aggregate_score,
         "next_step": "This block can be replaced or augmented by a GPT analysis layer.",
     }
 
