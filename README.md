@@ -1,6 +1,6 @@
 # SummerMax Quant Alpha
 
-Realtime A-share signal and interpretation MVP for founders Yuan (Max) and Yang (Summer).
+Realtime A-share signal and interpretation MVP for quantitative market research.
 
 Quant research brand:
 
