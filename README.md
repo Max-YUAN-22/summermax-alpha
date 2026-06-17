@@ -14,6 +14,7 @@ SummerMax Quant Alpha is a minimal decision-support app for Chinese A-share anal
 - 60-day daily technical indicators
 - rule-based trend interpretation
 - optional GPT interpretation through the OpenAI API
+- compatible with OpenAI-style gateways that expose `/v1/chat/completions`
 
 This project does not execute trades. It is intentionally limited to analysis and signal support.
 
@@ -109,7 +110,7 @@ This is for end-of-session decision support only. It does not place orders.
     "next_step": "This block can be replaced or augmented by a GPT analysis layer."
   },
   "llm_analysis": {
-    "engine": "gpt-5",
+    "engine": "gpt-5.5",
     "status": "ok",
     "content": {
       "summary": "short-term momentum remains constructive",
@@ -149,11 +150,21 @@ Optional for GPT analysis:
 
 ```bash
 export OPENAI_API_KEY="your_api_key"
-export OPENAI_MODEL="gpt-5"
-export OPENAI_BASE_URL="https://api.openai.com/v1"
+export OPENAI_MODEL="gpt-5.5"
+export OPENAI_BASE_URL="https://www.yunqiaoai.top/v1"
 ```
 
-`OPENAI_BASE_URL` is optional. Only set it if you are using a compatible proxy or gateway.
+For your current gateway setup, the backend is configured to work with OpenAI-compatible `chat.completions` endpoints such as:
+
+```text
+https://www.yunqiaoai.top/v1
+```
+
+with model:
+
+```text
+gpt-5.5
+```
 
 ### 4. Start the API
 
@@ -213,7 +224,7 @@ The included blueprint is set to the `free` plan to avoid requiring payment info
 ### Render environment variables
 
 - `OPENAI_API_KEY`: set manually in the Render dashboard
-- `OPENAI_MODEL`: defaults to `gpt-5`
+- `OPENAI_MODEL`: defaults to `gpt-5.5`
 - `OPENAI_BASE_URL`: set only if you use a compatible proxy or gateway
 
 ## Deploy Frontend to GitHub Pages

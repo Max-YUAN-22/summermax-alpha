@@ -11,6 +11,6 @@ services:
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENAI_MODEL
-        value: gpt-5
+        value: gpt-5.5
       - key: OPENAI_BASE_URL
         sync: false

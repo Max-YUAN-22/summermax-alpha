@@ -12,7 +12,7 @@ from openai import OpenAI
 
 APP_NAME = "SummerMax Quant Alpha API"
 APP_VERSION = "0.2.0"
-DEFAULT_LLM_MODEL = os.getenv("OPENAI_MODEL", "gpt-5")
+DEFAULT_LLM_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.5")
 
 app = FastAPI(
     title=APP_NAME,
@@ -207,11 +207,27 @@ def generate_llm_analysis(snapshot: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return None
 
     try:
-        response = client.responses.create(
+        response = client.chat.completions.create(
             model=DEFAULT_LLM_MODEL,
-            input=build_llm_prompt(snapshot),
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a disciplined A-share market analysis assistant. "
+                        "Return concise JSON only."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": build_llm_prompt(snapshot),
+                },
+            ],
+            temperature=0.2,
         )
-        text = getattr(response, "output_text", "").strip()
+        text = ""
+        if response.choices and response.choices[0].message:
+            text = (response.choices[0].message.content or "").strip()
+
         if not text:
             return {
                 "engine": DEFAULT_LLM_MODEL,
