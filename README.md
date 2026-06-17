@@ -198,29 +198,41 @@ When you open the page:
 
 ## Deploy Backend to Render
 
-### Render settings
+This repository includes [render.yaml](/Users/Apple/Documents/Codex/2026-06-18/new-chat/summermax-alpha/render.yaml), so Render can import the service configuration directly.
 
-- Root directory: `summermax-alpha/backend`
-- Build command: `pip install -r requirements.txt`
-- Start command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+### Render steps
+
+1. In Render, choose `New` -> `Blueprint`
+2. Connect the GitHub repository `Max-YUAN-22/summermax-alpha`
+3. Render will detect `render.yaml`
+4. Create the web service
+5. In the Render dashboard, fill `OPENAI_API_KEY` when you want GPT analysis enabled
 
 ### Render environment variables
 
-- `OPENAI_API_KEY`
-- `OPENAI_MODEL`
-- `OPENAI_BASE_URL` only if needed
+- `OPENAI_API_KEY`: set manually in the Render dashboard
+- `OPENAI_MODEL`: defaults to `gpt-5`
+- `OPENAI_BASE_URL`: set only if you use a compatible proxy or gateway
 
 ## Deploy Frontend to GitHub Pages
 
-### Option 1
+This repository includes a GitHub Actions workflow at [deploy-pages.yml](/Users/Apple/Documents/Codex/2026-06-18/new-chat/summermax-alpha/.github/workflows/deploy-pages.yml) that publishes the `frontend/` folder.
 
-- push the repository to GitHub
-- publish the `frontend` folder through your preferred GitHub Pages workflow
+### GitHub Pages steps
 
-### Option 2
+1. Open the repository on GitHub
+2. Go to `Settings` -> `Pages`
+3. Set the source to `GitHub Actions`
+4. Push to `main`, or manually run the `Deploy Frontend to GitHub Pages` workflow
+5. After deployment, the site URL should be:
+   `https://max-yuan-22.github.io/summermax-alpha/`
 
-- copy `frontend` contents to a dedicated `gh-pages` branch root
-- publish that branch with GitHub Pages
+### Frontend setup after Pages is live
+
+- Open the Pages site
+- Enter your deployed Render backend URL, for example `https://summermax-alpha-api.onrender.com`
+- Enter a stock code
+- Enable GPT analysis only when the backend has `OPENAI_API_KEY`
 
 ## Chat Tool Integration Direction
 
