@@ -294,6 +294,8 @@ OPENAI_MODEL=gpt-5.5
 OPENAI_BASE_URL=https://www.yunqiaoai.top/v1
 ```
 
+If the deployed backend reports an OpenAI client initialization error, make sure the pinned `openai` and `httpx` versions from [backend/requirements.txt](/Users/Apple/Documents/Codex/2026-06-18/new-chat/summermax-alpha/backend/requirements.txt) are installed together.
+
 ## Frontend
 
 The frontend is plain static HTML and JavaScript, so it can be deployed to GitHub Pages.
