@@ -167,6 +167,7 @@
       }
 
       .field {
+        position: relative;
         margin-bottom: 14px;
       }
 
@@ -401,6 +402,95 @@
         gap: 10px;
       }
 
+      .chart-stage {
+        height: 420px;
+        padding: 10px 4px 4px;
+      }
+
+      .chart-wrap {
+        position: relative;
+        height: 100%;
+        border-radius: 20px;
+        border: 1px solid var(--line);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.015));
+        overflow: hidden;
+      }
+
+      .chart-svg {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+
+      .chart-legend {
+        display: flex;
+        gap: 14px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-bottom: 10px;
+        color: var(--muted);
+        font-size: 0.82rem;
+      }
+
+      .legend-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .legend-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+      }
+
+      .search-results {
+        position: absolute;
+        top: calc(100% + 6px);
+        left: 0;
+        right: 0;
+        z-index: 20;
+        display: none;
+        padding: 8px;
+        border-radius: 18px;
+        border: 1px solid var(--line-strong);
+        background: rgba(10, 21, 36, 0.97);
+        box-shadow: 0 22px 40px rgba(0, 0, 0, 0.28);
+      }
+
+      .search-results.show {
+        display: block;
+      }
+
+      .search-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        width: 100%;
+        border: none;
+        background: transparent;
+        color: var(--text);
+        padding: 10px 12px;
+        border-radius: 12px;
+        cursor: pointer;
+        text-align: left;
+      }
+
+      .search-item:hover {
+        background: rgba(255, 255, 255, 0.05);
+      }
+
+      .search-code {
+        color: #dff2ff;
+        font-weight: 700;
+      }
+
+      .search-name {
+        color: var(--muted);
+        font-size: 0.84rem;
+      }
+
       .metric {
         padding: 14px;
         border-radius: 18px;
@@ -491,6 +581,86 @@
         margin-top: 7px;
       }
 
+      .quicklists-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .quicklist-card {
+        padding: 14px;
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.025);
+      }
+
+      .quicklist-card h4 {
+        margin: 0 0 12px;
+        font-size: 0.92rem;
+      }
+
+      .quicklist-items {
+        display: grid;
+        gap: 8px;
+      }
+
+      .quick-item {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 8px;
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.02);
+        color: var(--text);
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .quick-item:hover {
+        border-color: rgba(102, 209, 255, 0.32);
+        background: rgba(102, 209, 255, 0.05);
+      }
+
+      .quick-main strong,
+      .quick-main span {
+        display: block;
+      }
+
+      .quick-main strong {
+        font-size: 0.92rem;
+      }
+
+      .quick-main span {
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 0.8rem;
+      }
+
+      .quick-side {
+        display: grid;
+        justify-items: end;
+        align-content: center;
+      }
+
+      .quick-side strong {
+        font-size: 0.92rem;
+      }
+
+      .quick-side span {
+        margin-top: 4px;
+        font-size: 0.8rem;
+      }
+
+      .up {
+        color: var(--bull);
+      }
+
+      .down {
+        color: var(--bear);
+      }
+
       .section-divider {
         height: 1px;
         margin: 14px 0;
@@ -572,7 +742,8 @@
 
         .row-2,
         .subgrid,
-        .metric-grid {
+        .metric-grid,
+        .quicklists-grid {
           grid-template-columns: 1fr;
         }
       }
@@ -640,6 +811,7 @@
               <div class="field">
                 <label for="stockCode" data-i18n="stockCodeLabel">股票代码</label>
                 <input id="stockCode" type="text" maxlength="6" placeholder="300059" value="300059" />
+                <div id="stockSearchResults" class="search-results"></div>
               </div>
 
               <div class="field">
@@ -739,7 +911,7 @@
 
         <section class="workspace">
           <section class="dashboard-grid">
-            <article class="panel col-7">
+            <article class="panel col-8">
               <div class="panel-head">
                 <div>
                   <h2 data-i18n="overviewTitle">分析总览</h2>
@@ -770,7 +942,7 @@
               </div>
             </article>
 
-            <article class="panel col-5">
+            <article class="panel col-4">
               <div class="panel-head">
                 <div>
                   <h2 data-i18n="riskTitle">风险与盘中结构</h2>
@@ -779,6 +951,66 @@
               </div>
               <div class="panel-body">
                 <p id="closeSignalOutput" class="text-box" data-i18n-fallback="noDecision">No decision signal yet.</p>
+              </div>
+            </article>
+
+            <article class="panel col-8">
+              <div class="panel-head">
+                <div>
+                  <h2 data-i18n="chartTitle">价格走势主图</h2>
+                  <p data-i18n="chartText">把历史走势放到中心区域，先看趋势，再看 AI 解释。</p>
+                </div>
+              </div>
+              <div class="panel-body chart-stage">
+                <div class="chart-legend">
+                  <span class="legend-item"><span class="legend-dot" style="background:#7bd8ff"></span><span data-i18n="legendClose">收盘价</span></span>
+                  <span class="legend-item"><span class="legend-dot" style="background:#35d39a"></span><span data-i18n="legendMa5">MA5</span></span>
+                  <span class="legend-item"><span class="legend-dot" style="background:#f3b14b"></span><span data-i18n="legendMa20">MA20</span></span>
+                </div>
+                <div class="chart-wrap">
+                  <svg id="priceChart" class="chart-svg" viewBox="0 0 860 380" preserveAspectRatio="none"></svg>
+                </div>
+              </div>
+            </article>
+
+            <article class="panel col-8">
+              <div class="panel-head">
+                <div>
+                  <h2 data-i18n="quicklistsTitle">市场快速选股</h2>
+                  <p data-i18n="quicklistsText">不需要先记代码。直接从强势、弱势、活跃和大市值列表里点选开始分析。</p>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div class="quicklists-grid">
+                  <section class="quicklist-card">
+                    <h4 data-i18n="quicklistGainers">涨幅榜</h4>
+                    <div id="quicklistGainers" class="quicklist-items"></div>
+                  </section>
+                  <section class="quicklist-card">
+                    <h4 data-i18n="quicklistLosers">跌幅榜</h4>
+                    <div id="quicklistLosers" class="quicklist-items"></div>
+                  </section>
+                  <section class="quicklist-card">
+                    <h4 data-i18n="quicklistActive">活跃成交</h4>
+                    <div id="quicklistActive" class="quicklist-items"></div>
+                  </section>
+                  <section class="quicklist-card">
+                    <h4 data-i18n="quicklistCaps">大市值</h4>
+                    <div id="quicklistCaps" class="quicklist-items"></div>
+                  </section>
+                </div>
+              </div>
+            </article>
+
+            <article class="panel col-4">
+              <div class="panel-head">
+                <div>
+                  <h2 data-i18n="gptTitle">GPT 5.5 结构化分析</h2>
+                  <p data-i18n="gptText">不是只给一段话，而是方向、时间框架、关键位、催化与风险。</p>
+                </div>
+              </div>
+              <div class="panel-body">
+                <p id="llmOutput" class="text-box" data-i18n-fallback="gptDisabled">GPT analysis is disabled.</p>
               </div>
             </article>
 
@@ -817,18 +1049,6 @@
                 <p id="analysisOutput" class="text-box" data-i18n-fallback="noAnalysis">No analysis yet.</p>
                 <div class="section-divider"></div>
                 <ul id="signalsOutput" class="signal-list"></ul>
-              </div>
-            </article>
-
-            <article class="panel col-8">
-              <div class="panel-head">
-                <div>
-                  <h2 data-i18n="gptTitle">GPT 5.5 结构化分析</h2>
-                  <p data-i18n="gptText">不是只给一段话，而是方向、时间框架、关键位、催化与风险。</p>
-                </div>
-              </div>
-              <div class="panel-body">
-                <p id="llmOutput" class="text-box" data-i18n-fallback="gptDisabled">GPT analysis is disabled.</p>
               </div>
             </article>
 

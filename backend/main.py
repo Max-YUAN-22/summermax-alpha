@@ -63,6 +63,21 @@ DEFAULT_HEADERS = {
     ),
     "Accept": "application/json,text/plain,*/*",
 }
+STOCK_UNIVERSE_CACHE: Dict[str, Any] = {
+    "data": None,
+    "loaded_at": None,
+}
+STOCK_UNIVERSE_TTL = timedelta(minutes=30)
+CURATED_FOCUS_LIST = [
+    {"code": "600519", "name": "贵州茅台"},
+    {"code": "300750", "name": "宁德时代"},
+    {"code": "000858", "name": "五粮液"},
+    {"code": "601318", "name": "中国平安"},
+    {"code": "600036", "name": "招商银行"},
+    {"code": "300059", "name": "东方财富"},
+    {"code": "601012", "name": "隆基绿能"},
+    {"code": "002594", "name": "比亚迪"},
+]
 
 
 def get_openai_client() -> Optional[OpenAI]:
@@ -439,6 +454,79 @@ def fetch_realtime_quote_from_eastmoney_direct(code: str) -> Dict[str, Any]:
     }
 
 
+def fetch_market_snapshot_from_eastmoney(limit: int = 80) -> pd.DataFrame:
+    response = requests.get(
+        "https://82.push2.eastmoney.com/api/qt/clist/get",
+        params={
+            "pn": 1,
+            "pz": limit,
+            "po": 1,
+            "np": 1,
+            "ut": "bd1d9ddb04089700cf9c27f6f7426281",
+            "fltt": 2,
+            "invt": 2,
+            "fid": "f3",
+            "fs": "m:0 t:6,m:0 t:80,m:1 t:2,m:1 t:23,m:0 t:81 s:2048",
+            "fields": "f2,f3,f5,f6,f8,f12,f14,f20",
+        },
+        headers=DEFAULT_HEADERS,
+        timeout=12,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    diff = ((payload.get("data") or {}).get("diff")) or []
+    if not diff:
+        raise ValueError("No market snapshot data returned from Eastmoney.")
+
+    rows = []
+    for item in diff:
+        rows.append(
+            {
+                "code": str(item.get("f12") or ""),
+                "name": str(item.get("f14") or ""),
+                "最新价": safe_float(item.get("f2")),
+                "涨跌幅": safe_float(item.get("f3")),
+                "成交量": safe_float(item.get("f5")),
+                "成交额": safe_float(item.get("f6")),
+                "换手率": safe_float(item.get("f8")),
+                "总市值": safe_float(item.get("f20")),
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
+def build_curated_focus_dataframe() -> pd.DataFrame:
+    rows: List[Dict[str, Any]] = []
+    for item in CURATED_FOCUS_LIST:
+        try:
+            quote = fetch_realtime_quote(item["code"])
+            rows.append(
+                {
+                    "code": item["code"],
+                    "name": quote.get("name") or item["name"],
+                    "最新价": quote.get("price"),
+                    "涨跌幅": quote.get("change_percent"),
+                    "成交额": quote.get("amount"),
+                    "换手率": quote.get("turnover_rate"),
+                    "总市值": None,
+                }
+            )
+        except Exception:
+            rows.append(
+                {
+                    "code": item["code"],
+                    "name": item["name"],
+                    "最新价": None,
+                    "涨跌幅": None,
+                    "成交额": None,
+                    "换手率": None,
+                    "总市值": None,
+                }
+            )
+    return pd.DataFrame(rows)
+
+
 def fetch_realtime_quote_from_sina_direct(code: str) -> Dict[str, Any]:
     symbol = to_market_symbol(code)
     response = requests.get(
@@ -543,6 +631,116 @@ def fetch_realtime_quote(code: str) -> Dict[str, Any]:
         errors.append(f"individual_info_em failed: {exc}")
 
     raise ValueError(f"Failed to fetch realtime quote data: {' | '.join(errors)}")
+
+
+def build_chart_payload(df: pd.DataFrame) -> Dict[str, Any]:
+    working = df.copy().reset_index(drop=True)
+    working["ma5"] = working["close"].rolling(window=5).mean()
+    working["ma20"] = working["close"].rolling(window=20).mean()
+
+    points: List[Dict[str, Any]] = []
+    for _, row in working.tail(60).iterrows():
+        points.append(
+            {
+                "date": row["date"].strftime("%Y-%m-%d"),
+                "close": round(float(row["close"]), 2),
+                "volume": round(float(row["volume"]), 2),
+                "ma5": round(float(row["ma5"]), 2) if pd.notna(row["ma5"]) else None,
+                "ma20": round(float(row["ma20"]), 2) if pd.notna(row["ma20"]) else None,
+            }
+        )
+
+    return {
+        "series": points,
+        "summary": {
+            "period_days": len(points),
+            "high": round(float(working["close"].tail(60).max()), 2),
+            "low": round(float(working["close"].tail(60).min()), 2),
+        },
+    }
+
+
+def get_stock_universe() -> pd.DataFrame:
+    loaded_at = STOCK_UNIVERSE_CACHE.get("loaded_at")
+    cached = STOCK_UNIVERSE_CACHE.get("data")
+    if cached is not None and loaded_at and datetime.now() - loaded_at < STOCK_UNIVERSE_TTL:
+        return cached
+
+    errors: List[str] = []
+
+    try:
+        df = ak.stock_zh_a_spot_em()
+        if df is None or df.empty:
+            raise ValueError("AKShare returned empty A-share universe.")
+
+        normalized = df.rename(columns={"代码": "code", "名称": "name"}).copy()
+        if not {"code", "name"}.issubset(normalized.columns):
+            raise ValueError("Unexpected stock universe format.")
+
+        normalized["code"] = normalized["code"].astype(str)
+        normalized["name"] = normalized["name"].astype(str)
+        STOCK_UNIVERSE_CACHE["data"] = normalized
+        STOCK_UNIVERSE_CACHE["loaded_at"] = datetime.now()
+        return normalized
+    except Exception as exc:
+        errors.append(f"akshare spot_em failed: {exc}")
+
+    try:
+        df = fetch_market_snapshot_from_eastmoney(limit=200)
+        if df is None or df.empty:
+            raise ValueError("Eastmoney market snapshot returned empty data.")
+
+        normalized = df.loc[:, ["code", "name", "最新价", "涨跌幅", "成交额", "换手率", "总市值"]].copy()
+        normalized["code"] = normalized["code"].astype(str)
+        normalized["name"] = normalized["name"].astype(str)
+        STOCK_UNIVERSE_CACHE["data"] = normalized
+        STOCK_UNIVERSE_CACHE["loaded_at"] = datetime.now()
+        return normalized
+    except Exception as exc:
+        errors.append(f"eastmoney snapshot failed: {exc}")
+
+    curated = build_curated_focus_dataframe()
+    if curated is not None and not curated.empty:
+        STOCK_UNIVERSE_CACHE["data"] = curated
+        STOCK_UNIVERSE_CACHE["loaded_at"] = datetime.now()
+        return curated
+
+    raise ValueError(f"Failed to load A-share universe: {' | '.join(errors)}")
+
+
+def build_market_quicklist_item(row: pd.Series) -> Dict[str, Any]:
+    return {
+        "code": str(row.get("code", "")),
+        "name": str(row.get("name", "")),
+        "price": safe_float(row.get("最新价")),
+        "change_percent": safe_float(row.get("涨跌幅")),
+        "amount": safe_float(row.get("成交额")),
+        "turnover_rate": safe_float(row.get("换手率")),
+        "market_cap": safe_float(row.get("总市值")),
+    }
+
+
+def get_market_quicklists(limit: int = 8) -> Dict[str, List[Dict[str, Any]]]:
+    universe = get_stock_universe()
+
+    def sort_block(column: str, ascending: bool, fallback: Optional[pd.Series] = None) -> List[Dict[str, Any]]:
+        if column not in universe.columns:
+            return []
+
+        working = universe.copy()
+        working[column] = pd.to_numeric(working[column], errors="coerce")
+        working = working.dropna(subset=[column])
+        if fallback is not None:
+            working = working.loc[fallback(working)]
+        working = working.sort_values(column, ascending=ascending).head(limit)
+        return [build_market_quicklist_item(row) for _, row in working.iterrows()]
+
+    return {
+        "top_gainers": sort_block("涨跌幅", ascending=False, fallback=lambda df: df["涨跌幅"] > 0),
+        "top_losers": sort_block("涨跌幅", ascending=True, fallback=lambda df: df["涨跌幅"] < 0),
+        "active_turnover": sort_block("成交额", ascending=False),
+        "large_caps": sort_block("总市值", ascending=False),
+    }
 
 
 def safe_float(value: Any) -> Optional[float]:
@@ -1070,6 +1268,7 @@ def generate_llm_analysis(snapshot: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 def build_snapshot(code: str, include_llm: bool) -> Dict[str, Any]:
     history_df, history_source = fetch_stock_history(code)
     indicators = compute_indicators(history_df)
+    chart = build_chart_payload(history_df)
     realtime = fetch_realtime_quote(code)
     intraday_context, intraday_source = fetch_intraday_context(code)
     core_snapshot = {
@@ -1095,6 +1294,7 @@ def build_snapshot(code: str, include_llm: bool) -> Dict[str, Any]:
         "name": realtime["name"],
         "realtime": realtime,
         "indicators": indicators,
+        "chart": chart,
         "intraday": intraday_context,
         "analysis": technical_analysis,
         "technical_analysis": technical_analysis,
@@ -1222,6 +1422,57 @@ def analyze_watchlist(
             "requested_count": len(parsed_codes),
             "processed_count": len(results),
             "error_count": len(errors),
+        },
+    }
+
+
+@app.get("/stocks/search")
+def search_stocks(
+    q: str = Query(..., min_length=1, description="Stock code or company name keyword"),
+    limit: int = Query(12, ge=1, le=50),
+) -> Dict[str, Any]:
+    try:
+        universe = get_stock_universe()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {exc}") from exc
+
+    keyword = q.strip().lower()
+    matched = universe[
+        universe["code"].str.lower().str.contains(keyword, na=False)
+        | universe["name"].str.lower().str.contains(keyword, na=False)
+    ].head(limit)
+
+    return {
+        "query": q,
+        "results": [
+            {"code": row["code"], "name": row["name"]}
+            for _, row in matched.iterrows()
+        ],
+        "meta": {
+            "count": int(len(matched)),
+        },
+    }
+
+
+@app.get("/market/quicklists")
+def get_market_quicklists_endpoint(
+    limit: int = Query(8, ge=4, le=20),
+) -> Dict[str, Any]:
+    try:
+        lists = get_market_quicklists(limit=limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {exc}") from exc
+
+    return {
+        "lists": lists,
+        "meta": {
+            "market": "CN-A",
+            "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "limit": limit,
         },
     }
 

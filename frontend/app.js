@@ -20,6 +20,8 @@ const waizaoEndEl = document.getElementById("waizaoEnd");
 const waizaoBtn = document.getElementById("waizaoBtn");
 const waizaoStatusEl = document.getElementById("waizaoStatus");
 const waizaoOutputEl = document.getElementById("waizaoOutput");
+const stockSearchResultsEl = document.getElementById("stockSearchResults");
+const priceChartEl = document.getElementById("priceChart");
 const heroDirectionEl = document.getElementById("heroDirection");
 const heroConfidenceEl = document.getElementById("heroConfidence");
 const heroTimeframeEl = document.getElementById("heroTimeframe");
@@ -27,6 +29,10 @@ const heroScoreEl = document.getElementById("heroScore");
 const heroDecisionTagEl = document.getElementById("heroDecisionTag");
 const langZhBtn = document.getElementById("langZh");
 const langEnBtn = document.getElementById("langEn");
+const quicklistGainersEl = document.getElementById("quicklistGainers");
+const quicklistLosersEl = document.getElementById("quicklistLosers");
+const quicklistActiveEl = document.getElementById("quicklistActive");
+const quicklistCapsEl = document.getElementById("quicklistCaps");
 
 const I18N = {
   zh: {
@@ -81,6 +87,19 @@ const I18N = {
     ruleText: "给你一个不依赖 GPT 的基础判断层。",
     gptTitle: "GPT 5.5 结构化分析",
     gptText: "不是只给一段话，而是方向、时间框架、关键位、催化与风险。",
+    chartTitle: "价格走势主图",
+    chartText: "把历史走势放到中心区域，先看趋势，再看 AI 解释。",
+    legendClose: "收盘价",
+    legendMa5: "MA5",
+    legendMa20: "MA20",
+    quicklistsTitle: "市场快速选股",
+    quicklistsText: "不需要先记代码。直接从强势、弱势、活跃和大市值列表里点选开始分析。",
+    quicklistGainers: "涨幅榜",
+    quicklistLosers: "跌幅榜",
+    quicklistActive: "活跃成交",
+    quicklistCaps: "大市值",
+    quickAmount: "成交额",
+    quickMcap: "市值",
     waizaoOutputTitle: "Waizao 输出",
     waizaoOutputText: "如果你在左侧查了原始数据，结果显示在这里。",
     jsonTitle: "原始 JSON",
@@ -193,6 +212,19 @@ const I18N = {
     ruleText: "A non-GPT baseline judgment layer.",
     gptTitle: "Structured GPT 5.5 Analysis",
     gptText: "Not just a paragraph. Direction, timeframe, key levels, catalysts, and risks.",
+    chartTitle: "Primary Price Chart",
+    chartText: "Put price action in the center. Read the trend first, then the AI explanation.",
+    legendClose: "Close",
+    legendMa5: "MA5",
+    legendMa20: "MA20",
+    quicklistsTitle: "Market Quick Picks",
+    quicklistsText: "No need to remember stock codes first. Start from gainers, losers, active turnover, or large caps.",
+    quicklistGainers: "Top Gainers",
+    quicklistLosers: "Top Losers",
+    quicklistActive: "Active Turnover",
+    quicklistCaps: "Large Caps",
+    quickAmount: "Amount",
+    quickMcap: "Mkt Cap",
     waizaoOutputTitle: "Waizao Output",
     waizaoOutputText: "If you query raw data on the left, results show here.",
     jsonTitle: "Raw JSON",
@@ -307,6 +339,17 @@ function formatNumber(value) {
   return num.toLocaleString(currentLang === "zh" ? "zh-CN" : "en-US", { maximumFractionDigits: 2 });
 }
 
+function formatCompactNumber(value) {
+  const num = Number(value);
+  if (Number.isNaN(num)) {
+    return "-";
+  }
+  return new Intl.NumberFormat(currentLang === "zh" ? "zh-CN" : "en-US", {
+    notation: "compact",
+    maximumFractionDigits: 2,
+  }).format(num);
+}
+
 function createMetric(label, value) {
   return `
     <div class="metric">
@@ -342,6 +385,71 @@ function renderIndicators(indicators = {}) {
     createMetric(t("metricVOL60"), formatNumber(indicators.vol60)),
     createMetric(t("metricDate"), indicators.date || "-"),
   ].join("");
+}
+
+function buildPolyline(points, width, height, min, max) {
+  if (!points.length || min === max) {
+    return "";
+  }
+  return points.map((value, index) => {
+    const x = (index / Math.max(points.length - 1, 1)) * width;
+    const y = height - ((value - min) / (max - min)) * height;
+    return `${x.toFixed(2)},${y.toFixed(2)}`;
+  }).join(" ");
+}
+
+function renderChart(chart = {}) {
+  const series = Array.isArray(chart.series) ? chart.series : [];
+  if (!series.length) {
+    priceChartEl.innerHTML = "";
+    return;
+  }
+
+  const width = 860;
+  const height = 380;
+  const padding = 24;
+  const values = series.map((item) => item.close).filter((value) => typeof value === "number");
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const chartWidth = width - padding * 2;
+  const chartHeight = height - padding * 2;
+
+  const closePoints = buildPolyline(series.map((item) => item.close), chartWidth, chartHeight, min, max);
+  const ma5Values = series.map((item) => item.ma5).filter((value) => typeof value === "number");
+  const ma20Values = series.map((item) => item.ma20).filter((value) => typeof value === "number");
+
+  const closePolyline = closePoints ? `<polyline points="${closePoints}" fill="none" stroke="#7bd8ff" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" transform="translate(${padding},${padding})" />` : "";
+
+  const ma5Polyline = ma5Values.length
+    ? `<polyline points="${buildPolyline(series.map((item) => item.ma5 ?? item.close), chartWidth, chartHeight, min, max)}" fill="none" stroke="#35d39a" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round" transform="translate(${padding},${padding})" />`
+    : "";
+
+  const ma20Polyline = ma20Values.length
+    ? `<polyline points="${buildPolyline(series.map((item) => item.ma20 ?? item.close), chartWidth, chartHeight, min, max)}" fill="none" stroke="#f3b14b" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round" transform="translate(${padding},${padding})" />`
+    : "";
+
+  const grid = Array.from({ length: 4 }).map((_, index) => {
+    const y = padding + (chartHeight / 3) * index;
+    return `<line x1="${padding}" y1="${y}" x2="${width - padding}" y2="${y}" stroke="rgba(142,163,189,0.16)" stroke-width="1" />`;
+  }).join("");
+
+  const labels = [
+    series[0]?.date || "",
+    series[Math.floor(series.length / 2)]?.date || "",
+    series[series.length - 1]?.date || "",
+  ].map((label, index) => {
+    const x = [padding, width / 2, width - padding][index];
+    return `<text x="${x}" y="${height - 6}" fill="#8ea3bd" font-size="12" text-anchor="${index === 0 ? "start" : index === 1 ? "middle" : "end"}">${label}</text>`;
+  }).join("");
+
+  priceChartEl.innerHTML = `
+    <rect x="0" y="0" width="${width}" height="${height}" fill="transparent"></rect>
+    ${grid}
+    ${closePolyline}
+    ${ma5Polyline}
+    ${ma20Polyline}
+    ${labels}
+  `;
 }
 
 function renderRuleAnalysis(analysis = {}) {
@@ -458,6 +566,98 @@ function renderCloseSignal(closeSignal = {}, riskAssessment = {}, finalDecision 
   closeSignalOutputEl.textContent = lines.length ? lines.join("\n") : t("noDecision");
 }
 
+function renderQuicklist(el, items = [], mode = "change") {
+  if (!el) {
+    return;
+  }
+
+  if (!items.length) {
+    el.innerHTML = `<div class="inline-note">${t("noAnalysis")}</div>`;
+    return;
+  }
+
+  el.innerHTML = items.map((item) => {
+    const change = Number(item.change_percent);
+    const sideClass = Number.isNaN(change) ? "" : change >= 0 ? "up" : "down";
+    const secondary = mode === "amount"
+      ? `${t("quickAmount")}: ${formatCompactNumber(item.amount)}`
+      : mode === "cap"
+        ? `${t("quickMcap")}: ${formatCompactNumber(item.market_cap)}`
+        : `${formatNumber(item.change_percent)}%`;
+
+    return `
+      <button type="button" class="quick-item" data-code="${item.code}">
+        <div class="quick-main">
+          <strong>${item.code} ${item.name || ""}</strong>
+          <span>${formatNumber(item.price)}</span>
+        </div>
+        <div class="quick-side">
+          <strong class="${sideClass}">${secondary}</strong>
+          <span>${formatNumber(item.turnover_rate)}%</span>
+        </div>
+      </button>
+    `;
+  }).join("");
+}
+
+async function loadMarketQuicklists() {
+  const apiBase = normalizeApiBase(apiBaseInput.value);
+  if (!apiBase) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`${apiBase}/market/quicklists?limit=6`);
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.detail || t("unknownError"));
+    }
+
+    const lists = data.lists || {};
+    renderQuicklist(quicklistGainersEl, lists.top_gainers || [], "change");
+    renderQuicklist(quicklistLosersEl, lists.top_losers || [], "change");
+    renderQuicklist(quicklistActiveEl, lists.active_turnover || [], "amount");
+    renderQuicklist(quicklistCapsEl, lists.large_caps || [], "cap");
+  } catch {
+    renderQuicklist(quicklistGainersEl, []);
+    renderQuicklist(quicklistLosersEl, []);
+    renderQuicklist(quicklistActiveEl, []);
+    renderQuicklist(quicklistCapsEl, []);
+  }
+}
+
+async function searchStocks() {
+  const keyword = stockCodeInput.value.trim();
+  const apiBase = normalizeApiBase(apiBaseInput.value);
+  if (!apiBase || keyword.length < 2) {
+    stockSearchResultsEl.classList.remove("show");
+    stockSearchResultsEl.innerHTML = "";
+    return;
+  }
+
+  try {
+    const response = await fetch(`${apiBase}/stocks/search?q=${encodeURIComponent(keyword)}`);
+    const data = await response.json();
+    const results = Array.isArray(data.results) ? data.results : [];
+    if (!results.length) {
+      stockSearchResultsEl.classList.remove("show");
+      stockSearchResultsEl.innerHTML = "";
+      return;
+    }
+
+    stockSearchResultsEl.innerHTML = results.map((item) => `
+      <button type="button" class="search-item" data-code="${item.code}" data-name="${item.name}">
+        <span class="search-code">${item.code}</span>
+        <span class="search-name">${item.name}</span>
+      </button>
+    `).join("");
+    stockSearchResultsEl.classList.add("show");
+  } catch {
+    stockSearchResultsEl.classList.remove("show");
+    stockSearchResultsEl.innerHTML = "";
+  }
+}
+
 function buildWaizaoUrl(apiBase) {
   const mode = waizaoModeEl.value;
   const code = waizaoCodeEl.value.trim();
@@ -524,6 +724,7 @@ async function analyzeStock() {
   realtimeMetricsEl.innerHTML = "";
   indicatorMetricsEl.innerHTML = "";
   signalsOutputEl.innerHTML = "";
+  renderChart({});
   renderHeroSummary({});
 
   try {
@@ -570,6 +771,7 @@ async function analyzeStock() {
 
     renderRealtime(stockData.realtime);
     renderIndicators(stockData.indicators);
+    renderChart(stockData.chart);
     renderRuleAnalysis(stockData.analysis);
     renderLlmAnalysis(stockData.llm_analysis);
     renderCloseSignal(
@@ -586,6 +788,7 @@ async function analyzeStock() {
     setStatus(error.message || t("unknownError"), true);
     renderRealtime({});
     renderIndicators({});
+    renderChart({});
     renderRuleAnalysis({});
     renderLlmAnalysis(null);
     renderCloseSignal({}, {}, {});
@@ -626,6 +829,8 @@ async function fetchWaizaoData() {
 analyzeBtn.addEventListener("click", analyzeStock);
 waizaoBtn.addEventListener("click", fetchWaizaoData);
 apiBaseInput.addEventListener("input", updateSetupNote);
+apiBaseInput.addEventListener("change", loadMarketQuicklists);
+stockCodeInput.addEventListener("input", searchStocks);
 langZhBtn.addEventListener("click", () => setLanguage("zh"));
 langEnBtn.addEventListener("click", () => setLanguage("en"));
 
@@ -647,9 +852,37 @@ waizaoCodeEl.addEventListener("keydown", (event) => {
   }
 });
 
+stockSearchResultsEl.addEventListener("click", (event) => {
+  const button = event.target.closest(".search-item");
+  if (!button) {
+    return;
+  }
+  stockCodeInput.value = button.dataset.code || "";
+  stockSearchResultsEl.classList.remove("show");
+  stockSearchResultsEl.innerHTML = "";
+  analyzeStock();
+});
+
+document.addEventListener("click", (event) => {
+  if (!stockSearchResultsEl.contains(event.target) && event.target !== stockCodeInput) {
+    stockSearchResultsEl.classList.remove("show");
+  }
+});
+
+document.addEventListener("click", (event) => {
+  const button = event.target.closest(".quick-item");
+  if (!button) {
+    return;
+  }
+  stockCodeInput.value = button.dataset.code || "";
+  analyzeStock();
+});
+
 setLanguage(currentLang);
 updateSetupNote();
+renderChart({});
 renderHeroSummary({});
 renderRuleAnalysis({});
 renderLlmAnalysis(null);
 renderCloseSignal({}, {}, {});
+loadMarketQuicklists();
