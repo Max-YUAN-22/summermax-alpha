@@ -101,9 +101,15 @@ def normalize_history_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     renamed = df.rename(
         columns={
             "日期": "date",
+            "开盘": "open",
+            "最高": "high",
+            "最低": "low",
             "收盘": "close",
             "成交量": "volume",
             "date": "date",
+            "open": "open",
+            "high": "high",
+            "low": "low",
             "close": "close",
             "volume": "volume",
             "index": "date",
@@ -114,11 +120,20 @@ def normalize_history_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     if not required.issubset(renamed.columns):
         raise ValueError("Unexpected historical data format returned from AKShare.")
 
-    normalized = renamed.loc[:, ["date", "close", "volume"]].copy()
+    normalized = renamed.copy()
+    normalized = normalized.loc[:, [column for column in ["date", "open", "high", "low", "close", "volume"] if column in normalized.columns]]
     normalized["date"] = pd.to_datetime(normalized["date"])
-    normalized["close"] = pd.to_numeric(normalized["close"], errors="coerce")
-    normalized["volume"] = pd.to_numeric(normalized["volume"], errors="coerce")
-    normalized = normalized.dropna(subset=["date", "close", "volume"]).sort_values("date")
+    for field in ["open", "high", "low", "close", "volume"]:
+        if field in normalized.columns:
+            normalized[field] = pd.to_numeric(normalized[field], errors="coerce")
+
+    if "open" not in normalized.columns:
+        normalized["open"] = normalized["close"]
+    if "high" not in normalized.columns:
+        normalized["high"] = normalized["close"]
+    if "low" not in normalized.columns:
+        normalized["low"] = normalized["close"]
+    normalized = normalized.dropna(subset=["date", "open", "high", "low", "close", "volume"]).sort_values("date")
 
     if normalized.empty:
         raise ValueError("Historical stock data is empty after normalization.")
@@ -178,6 +193,11 @@ def normalize_waizao_history_payload(payload: Any) -> pd.DataFrame:
             "tradeDate": "date",
             "day": "date",
             "openPrice": "open",
+            "open": "open",
+            "highPrice": "high",
+            "high": "high",
+            "lowPrice": "low",
+            "low": "low",
             "closePrice": "close",
             "close": "close",
             "volume": "volume",
@@ -190,11 +210,20 @@ def normalize_waizao_history_payload(payload: Any) -> pd.DataFrame:
     if not required.issubset(renamed.columns):
         raise ValueError("Waizao payload does not contain date/close/volume fields.")
 
-    normalized = renamed.loc[:, ["date", "close", "volume"]].copy()
+    normalized = renamed.copy()
+    normalized = normalized.loc[:, [column for column in ["date", "open", "high", "low", "close", "volume"] if column in normalized.columns]]
     normalized["date"] = pd.to_datetime(normalized["date"])
-    normalized["close"] = pd.to_numeric(normalized["close"], errors="coerce")
-    normalized["volume"] = pd.to_numeric(normalized["volume"], errors="coerce")
-    normalized = normalized.dropna(subset=["date", "close", "volume"]).sort_values("date")
+    for field in ["open", "high", "low", "close", "volume"]:
+        if field in normalized.columns:
+            normalized[field] = pd.to_numeric(normalized[field], errors="coerce")
+
+    if "open" not in normalized.columns:
+        normalized["open"] = normalized["close"]
+    if "high" not in normalized.columns:
+        normalized["high"] = normalized["close"]
+    if "low" not in normalized.columns:
+        normalized["low"] = normalized["close"]
+    normalized = normalized.dropna(subset=["date", "open", "high", "low", "close", "volume"]).sort_values("date")
     if normalized.empty:
         raise ValueError("Waizao history payload is empty after normalization.")
     return normalized
@@ -643,6 +672,9 @@ def build_chart_payload(df: pd.DataFrame) -> Dict[str, Any]:
         points.append(
             {
                 "date": row["date"].strftime("%Y-%m-%d"),
+                "open": round(float(row["open"]), 2),
+                "high": round(float(row["high"]), 2),
+                "low": round(float(row["low"]), 2),
                 "close": round(float(row["close"]), 2),
                 "volume": round(float(row["volume"]), 2),
                 "ma5": round(float(row["ma5"]), 2) if pd.notna(row["ma5"]) else None,

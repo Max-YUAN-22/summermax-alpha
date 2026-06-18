@@ -264,6 +264,27 @@
         color: #eafffb;
       }
 
+      .btn-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        border-radius: 16px;
+        padding: 14px 18px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.03);
+        color: var(--text);
+        text-decoration: none;
+        font-size: 0.96rem;
+        font-weight: 700;
+      }
+
+      .action-row {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+
       .btn-primary:disabled,
       .btn-secondary:disabled {
         opacity: 0.6;
@@ -403,7 +424,7 @@
       }
 
       .chart-stage {
-        height: 420px;
+        height: 520px;
         padding: 10px 4px 4px;
       }
 
@@ -420,6 +441,16 @@
         width: 100%;
         height: 100%;
         display: block;
+      }
+
+      .chart-meta {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 0.8rem;
       }
 
       .chart-legend {
@@ -829,7 +860,10 @@
                 </label>
               </div>
 
-              <button id="analyzeBtn" class="btn-primary" type="button" data-i18n="analyzeBtn">开始分析</button>
+              <div class="action-row">
+                <button id="analyzeBtn" class="btn-primary" type="button" data-i18n="analyzeBtn">开始分析</button>
+                <a class="btn-link" href="/app/debug.html" data-i18n="openDebugBtn">查看原始 JSON</a>
+              </div>
               <p id="status" class="status"></p>
 
               <div id="setupNote" class="help-card">
@@ -868,45 +902,6 @@
             </div>
           </section>
 
-          <section class="panel">
-            <div class="panel-head">
-              <div>
-                <h3 data-i18n="waizaoTitle">Waizao 数据浏览</h3>
-                <p data-i18n="waizaoText">如果你要看原始数据、分钟线或盘口，就在这里单独查。</p>
-              </div>
-            </div>
-            <div class="panel-body">
-              <div class="field">
-                <label for="waizaoMode" data-i18n="waizaoDatasetLabel">数据类型</label>
-                <select id="waizaoMode">
-                  <option value="base-info">Base Info</option>
-                  <option value="day-kline">Day K-Line</option>
-                  <option value="hour-kline">Hour K-Line</option>
-                  <option value="minute-kline">Minute K-Line</option>
-                  <option value="pankou">PanKou</option>
-                </select>
-              </div>
-
-              <div class="field">
-                <label for="waizaoCode" data-i18n="waizaoCodeLabel">代码 / 符号</label>
-                <input id="waizaoCode" type="text" placeholder="300059 or sz000001,sh600000" value="300059" />
-              </div>
-
-              <div class="row-2">
-                <div class="field">
-                  <label for="waizaoStart" data-i18n="waizaoStartLabel">开始</label>
-                  <input id="waizaoStart" type="text" placeholder="2026-01-01" value="2026-01-01" />
-                </div>
-                <div class="field">
-                  <label for="waizaoEnd" data-i18n="waizaoEndLabel">结束</label>
-                  <input id="waizaoEnd" type="text" placeholder="2026-06-19" value="2026-06-19" />
-                </div>
-              </div>
-
-              <button id="waizaoBtn" class="btn-secondary" type="button" data-i18n="waizaoBtn">查询原始数据</button>
-              <p id="waizaoStatus" class="status"></p>
-            </div>
-          </section>
         </aside>
 
         <section class="workspace">
@@ -968,7 +963,11 @@
                   <span class="legend-item"><span class="legend-dot" style="background:#f3b14b"></span><span data-i18n="legendMa20">MA20</span></span>
                 </div>
                 <div class="chart-wrap">
-                  <svg id="priceChart" class="chart-svg" viewBox="0 0 860 380" preserveAspectRatio="none"></svg>
+                  <svg id="priceChart" class="chart-svg" viewBox="0 0 860 470" preserveAspectRatio="none"></svg>
+                </div>
+                <div class="chart-meta">
+                  <span id="chartMetaLeft">OHLC + MA5 + MA20 + Volume</span>
+                  <span id="chartMetaRight">60 Trading Days</span>
                 </div>
               </div>
             </article>
@@ -1052,34 +1051,11 @@
               </div>
             </article>
 
-            <article class="panel col-4">
-              <div class="panel-head">
-                <div>
-                  <h2 data-i18n="waizaoOutputTitle">Waizao 输出</h2>
-                  <p data-i18n="waizaoOutputText">如果你在左侧查了原始数据，结果显示在这里。</p>
-                </div>
-              </div>
-              <div class="panel-body">
-                <pre id="waizaoOutput">No data yet.</pre>
-              </div>
-            </article>
-
-            <article class="panel col-12">
-              <div class="panel-head">
-                <div>
-                  <h2 data-i18n="jsonTitle">原始 JSON</h2>
-                  <p data-i18n="jsonText">如果想核对字段、调试接口或复制数据，看这里。</p>
-                </div>
-              </div>
-              <div class="panel-body">
-                <pre id="jsonOutput">No data yet.</pre>
-              </div>
-            </article>
           </section>
         </section>
       </div>
     </main>
 
-    <script src="./app.js"></script>
+    <script src="/app/app.js"></script>
   </body>
 </html>

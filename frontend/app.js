@@ -12,14 +12,6 @@ const analysisOutputEl = document.getElementById("analysisOutput");
 const signalsOutputEl = document.getElementById("signalsOutput");
 const llmOutputEl = document.getElementById("llmOutput");
 const closeSignalOutputEl = document.getElementById("closeSignalOutput");
-const jsonOutputEl = document.getElementById("jsonOutput");
-const waizaoModeEl = document.getElementById("waizaoMode");
-const waizaoCodeEl = document.getElementById("waizaoCode");
-const waizaoStartEl = document.getElementById("waizaoStart");
-const waizaoEndEl = document.getElementById("waizaoEnd");
-const waizaoBtn = document.getElementById("waizaoBtn");
-const waizaoStatusEl = document.getElementById("waizaoStatus");
-const waizaoOutputEl = document.getElementById("waizaoOutput");
 const stockSearchResultsEl = document.getElementById("stockSearchResults");
 const priceChartEl = document.getElementById("priceChart");
 const heroDirectionEl = document.getElementById("heroDirection");
@@ -33,6 +25,8 @@ const quicklistGainersEl = document.getElementById("quicklistGainers");
 const quicklistLosersEl = document.getElementById("quicklistLosers");
 const quicklistActiveEl = document.getElementById("quicklistActive");
 const quicklistCapsEl = document.getElementById("quicklistCaps");
+const chartMetaLeftEl = document.getElementById("chartMetaLeft");
+const chartMetaRightEl = document.getElementById("chartMetaRight");
 
 const I18N = {
   zh: {
@@ -55,6 +49,7 @@ const I18N = {
     gptToggleTitle: "启用 GPT 5.5 分析",
     gptToggleText: "需要后端已配置 OpenAI API Key。",
     analyzeBtn: "开始分析",
+    openDebugBtn: "查看原始 JSON",
     setupTitle: "为什么现在可能还不能跑？",
     setupText: "这个前端只是工作台。真正抓行情、算指标、调用 GPT 的地方在后端 API。你需要先部署或启动后端。",
     apiGuideTitle: "GPT API 在哪里设置",
@@ -63,13 +58,6 @@ const I18N = {
     apiGuideItem2Title: "模型名称",
     apiGuideItem3Title: "兼容网关可选",
     apiGuideItem4Title: "本地启动示例",
-    waizaoTitle: "Waizao 数据浏览",
-    waizaoText: "如果你要看原始数据、分钟线或盘口，就在这里单独查。",
-    waizaoDatasetLabel: "数据类型",
-    waizaoCodeLabel: "代码 / 符号",
-    waizaoStartLabel: "开始",
-    waizaoEndLabel: "结束",
-    waizaoBtn: "查询原始数据",
     overviewTitle: "分析总览",
     overviewText: "先看方向、评分和风险，再决定要不要继续细读。",
     overviewDirection: "方向",
@@ -92,6 +80,8 @@ const I18N = {
     legendClose: "收盘价",
     legendMa5: "MA5",
     legendMa20: "MA20",
+    chartMetaLeft: "K线 + MA5 + MA20 + 成交量",
+    chartMetaRight: "近 60 个交易日",
     quicklistsTitle: "市场快速选股",
     quicklistsText: "不需要先记代码。直接从强势、弱势、活跃和大市值列表里点选开始分析。",
     quicklistGainers: "涨幅榜",
@@ -100,10 +90,6 @@ const I18N = {
     quicklistCaps: "大市值",
     quickAmount: "成交额",
     quickMcap: "市值",
-    waizaoOutputTitle: "Waizao 输出",
-    waizaoOutputText: "如果你在左侧查了原始数据，结果显示在这里。",
-    jsonTitle: "原始 JSON",
-    jsonText: "如果想核对字段、调试接口或复制数据，看这里。",
     noDecision: "还没有决策结果。",
     noAnalysis: "还没有分析结果。",
     gptDisabled: "GPT 分析当前未启用。",
@@ -113,10 +99,6 @@ const I18N = {
     gptLoading: "正在等待 GPT 5.5 分析...",
     unknownError: "请求失败。",
     quoteLoadedButAnalysisFailed: "实时行情已获取，但分析失败：",
-    waizaoMissingApi: "请先填写后端 API 地址。",
-    waizaoLoading: "正在加载 Waizao 数据...",
-    waizaoMissingCode: "请输入 Waizao 代码或符号。",
-    waizaoLoaded: "Waizao 数据已加载：",
     loadedPrefix: "已加载",
     at: "时间",
     metricPrice: "现价",
@@ -180,6 +162,7 @@ const I18N = {
     gptToggleTitle: "Enable GPT 5.5 Analysis",
     gptToggleText: "Requires the backend to already have an OpenAI API key configured.",
     analyzeBtn: "Run Analysis",
+    openDebugBtn: "Open Raw JSON",
     setupTitle: "Why may it still not run?",
     setupText: "This page is only the workstation. Quote fetching, indicator calculation, and GPT calls all happen in the backend API. You need to deploy or start the backend first.",
     apiGuideTitle: "Where to set the GPT API",
@@ -188,13 +171,6 @@ const I18N = {
     apiGuideItem2Title: "Model Name",
     apiGuideItem3Title: "Compatible Gateway Optional",
     apiGuideItem4Title: "Local Start Example",
-    waizaoTitle: "Waizao Data Explorer",
-    waizaoText: "Use this section when you want raw datasets, minute bars, or order-book style data.",
-    waizaoDatasetLabel: "Dataset",
-    waizaoCodeLabel: "Code / Symbol",
-    waizaoStartLabel: "Start",
-    waizaoEndLabel: "End",
-    waizaoBtn: "Fetch Raw Data",
     overviewTitle: "Analysis Overview",
     overviewText: "Read direction, score, and risk first before going deeper.",
     overviewDirection: "Direction",
@@ -217,6 +193,8 @@ const I18N = {
     legendClose: "Close",
     legendMa5: "MA5",
     legendMa20: "MA20",
+    chartMetaLeft: "Candles + MA5 + MA20 + Volume",
+    chartMetaRight: "Last 60 Trading Days",
     quicklistsTitle: "Market Quick Picks",
     quicklistsText: "No need to remember stock codes first. Start from gainers, losers, active turnover, or large caps.",
     quicklistGainers: "Top Gainers",
@@ -225,10 +203,6 @@ const I18N = {
     quicklistCaps: "Large Caps",
     quickAmount: "Amount",
     quickMcap: "Mkt Cap",
-    waizaoOutputTitle: "Waizao Output",
-    waizaoOutputText: "If you query raw data on the left, results show here.",
-    jsonTitle: "Raw JSON",
-    jsonText: "Use this to inspect fields, debug the API, or copy response data.",
     noDecision: "No decision signal yet.",
     noAnalysis: "No analysis yet.",
     gptDisabled: "GPT analysis is currently disabled.",
@@ -238,10 +212,6 @@ const I18N = {
     gptLoading: "Waiting for GPT 5.5 analysis...",
     unknownError: "Request failed.",
     quoteLoadedButAnalysisFailed: "Realtime quote loaded, but analysis failed:",
-    waizaoMissingApi: "Please enter a backend API base URL first.",
-    waizaoLoading: "Loading Waizao dataset...",
-    waizaoMissingCode: "Please enter a Waizao code or symbol.",
-    waizaoLoaded: "Waizao data loaded:",
     loadedPrefix: "Loaded",
     at: "at",
     metricPrice: "Price",
@@ -310,16 +280,17 @@ function setLanguage(lang) {
   document.querySelectorAll("[data-i18n]").forEach((node) => {
     node.textContent = t(node.dataset.i18n);
   });
+  if (chartMetaLeftEl) {
+    chartMetaLeftEl.textContent = t("chartMetaLeft");
+  }
+  if (chartMetaRightEl && !chartMetaRightEl.dataset.dynamic) {
+    chartMetaRightEl.textContent = t("chartMetaRight");
+  }
 }
 
 function setStatus(message, isError = false) {
   statusEl.textContent = message;
   statusEl.classList.toggle("error", isError);
-}
-
-function setWaizaoStatus(message, isError = false) {
-  waizaoStatusEl.textContent = message;
-  waizaoStatusEl.classList.toggle("error", isError);
 }
 
 function updateSetupNote() {
@@ -402,23 +373,59 @@ function renderChart(chart = {}) {
   const series = Array.isArray(chart.series) ? chart.series : [];
   if (!series.length) {
     priceChartEl.innerHTML = "";
+    if (chartMetaRightEl) {
+      chartMetaRightEl.textContent = t("chartMetaRight");
+      chartMetaRightEl.dataset.dynamic = "";
+    }
     return;
   }
 
   const width = 860;
-  const height = 380;
+  const height = 470;
   const padding = 24;
-  const values = series.map((item) => item.close).filter((value) => typeof value === "number");
+  const priceSectionHeight = 300;
+  const volumeSectionTop = 338;
+  const volumeSectionHeight = 84;
+  const values = series.flatMap((item) => [item.high, item.low]).filter((value) => typeof value === "number");
   const min = Math.min(...values);
   const max = Math.max(...values);
   const chartWidth = width - padding * 2;
-  const chartHeight = height - padding * 2;
+  const chartHeight = priceSectionHeight;
+  const candleSlot = chartWidth / Math.max(series.length, 1);
+  const candleWidth = Math.max(3, Math.min(10, candleSlot * 0.55));
 
-  const closePoints = buildPolyline(series.map((item) => item.close), chartWidth, chartHeight, min, max);
   const ma5Values = series.map((item) => item.ma5).filter((value) => typeof value === "number");
   const ma20Values = series.map((item) => item.ma20).filter((value) => typeof value === "number");
+  const volumes = series.map((item) => Number(item.volume) || 0);
+  const maxVolume = Math.max(...volumes, 1);
 
-  const closePolyline = closePoints ? `<polyline points="${closePoints}" fill="none" stroke="#7bd8ff" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" transform="translate(${padding},${padding})" />` : "";
+  const yForPrice = (price) => padding + (chartHeight - ((price - min) / Math.max(max - min, 0.0001)) * chartHeight);
+
+  const candles = series.map((item, index) => {
+    const xCenter = padding + candleSlot * index + candleSlot / 2;
+    const openY = yForPrice(item.open);
+    const closeY = yForPrice(item.close);
+    const highY = yForPrice(item.high);
+    const lowY = yForPrice(item.low);
+    const bodyTop = Math.min(openY, closeY);
+    const bodyHeight = Math.max(Math.abs(openY - closeY), 1.5);
+    const isUp = item.close >= item.open;
+    const color = isUp ? "#2ed09a" : "#ff6b7e";
+
+    return `
+      <line x1="${xCenter.toFixed(2)}" y1="${highY.toFixed(2)}" x2="${xCenter.toFixed(2)}" y2="${lowY.toFixed(2)}" stroke="${color}" stroke-width="1.2" />
+      <rect x="${(xCenter - candleWidth / 2).toFixed(2)}" y="${bodyTop.toFixed(2)}" width="${candleWidth.toFixed(2)}" height="${bodyHeight.toFixed(2)}" fill="${color}" rx="1.5" />
+    `;
+  }).join("");
+
+  const volumeBars = series.map((item, index) => {
+    const xCenter = padding + candleSlot * index + candleSlot / 2;
+    const barHeight = ((Number(item.volume) || 0) / maxVolume) * volumeSectionHeight;
+    const y = volumeSectionTop + volumeSectionHeight - barHeight;
+    const isUp = item.close >= item.open;
+    const color = isUp ? "rgba(46, 208, 154, 0.55)" : "rgba(255, 107, 126, 0.55)";
+    return `<rect x="${(xCenter - candleWidth / 2).toFixed(2)}" y="${y.toFixed(2)}" width="${candleWidth.toFixed(2)}" height="${barHeight.toFixed(2)}" fill="${color}" rx="1.2" />`;
+  }).join("");
 
   const ma5Polyline = ma5Values.length
     ? `<polyline points="${buildPolyline(series.map((item) => item.ma5 ?? item.close), chartWidth, chartHeight, min, max)}" fill="none" stroke="#35d39a" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round" transform="translate(${padding},${padding})" />`
@@ -428,10 +435,12 @@ function renderChart(chart = {}) {
     ? `<polyline points="${buildPolyline(series.map((item) => item.ma20 ?? item.close), chartWidth, chartHeight, min, max)}" fill="none" stroke="#f3b14b" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round" transform="translate(${padding},${padding})" />`
     : "";
 
-  const grid = Array.from({ length: 4 }).map((_, index) => {
-    const y = padding + (chartHeight / 3) * index;
+  const grid = Array.from({ length: 5 }).map((_, index) => {
+    const y = padding + (chartHeight / 4) * index;
     return `<line x1="${padding}" y1="${y}" x2="${width - padding}" y2="${y}" stroke="rgba(142,163,189,0.16)" stroke-width="1" />`;
   }).join("");
+
+  const volumeDivider = `<line x1="${padding}" y1="${volumeSectionTop - 10}" x2="${width - padding}" y2="${volumeSectionTop - 10}" stroke="rgba(142,163,189,0.18)" stroke-width="1" />`;
 
   const labels = [
     series[0]?.date || "",
@@ -439,17 +448,31 @@ function renderChart(chart = {}) {
     series[series.length - 1]?.date || "",
   ].map((label, index) => {
     const x = [padding, width / 2, width - padding][index];
-    return `<text x="${x}" y="${height - 6}" fill="#8ea3bd" font-size="12" text-anchor="${index === 0 ? "start" : index === 1 ? "middle" : "end"}">${label}</text>`;
+    return `<text x="${x}" y="${height - 10}" fill="#8ea3bd" font-size="12" text-anchor="${index === 0 ? "start" : index === 1 ? "middle" : "end"}">${label}</text>`;
   }).join("");
+
+  const volumeLabel = `<text x="${padding}" y="${volumeSectionTop - 16}" fill="#8ea3bd" font-size="11">VOL</text>`;
 
   priceChartEl.innerHTML = `
     <rect x="0" y="0" width="${width}" height="${height}" fill="transparent"></rect>
     ${grid}
-    ${closePolyline}
+    ${candles}
     ${ma5Polyline}
     ${ma20Polyline}
+    ${volumeDivider}
+    ${volumeBars}
+    ${volumeLabel}
     ${labels}
   `;
+
+  if (chartMetaRightEl) {
+    const period = chart.summary?.period_days ? `${chart.summary.period_days} ${currentLang === "zh" ? "个交易日" : "trading days"}` : t("chartMetaRight");
+    const range = chart.summary?.high != null && chart.summary?.low != null
+      ? `${period} | ${currentLang === "zh" ? "区间" : "range"} ${formatNumber(chart.summary.low)} - ${formatNumber(chart.summary.high)}`
+      : period;
+    chartMetaRightEl.textContent = range;
+    chartMetaRightEl.dataset.dynamic = "true";
+  }
 }
 
 function renderRuleAnalysis(analysis = {}) {
@@ -658,45 +681,6 @@ async function searchStocks() {
   }
 }
 
-function buildWaizaoUrl(apiBase) {
-  const mode = waizaoModeEl.value;
-  const code = waizaoCodeEl.value.trim();
-  const start = waizaoStartEl.value.trim();
-  const end = waizaoEndEl.value.trim();
-
-  if (!code) {
-    throw new Error(t("waizaoMissingCode"));
-  }
-
-  const params = new URLSearchParams();
-  switch (mode) {
-    case "base-info":
-      params.set("code", code);
-      return `${apiBase}/waizao/base-info?${params.toString()}`;
-    case "pankou":
-      params.set("code", code);
-      return `${apiBase}/waizao/pankou?${params.toString()}`;
-    case "day-kline":
-      params.set("code", code);
-      params.set("start_date", start);
-      params.set("end_date", end);
-      return `${apiBase}/waizao/day-kline?${params.toString()}`;
-    case "hour-kline":
-      params.set("code", code);
-      params.set("start_date", start);
-      params.set("end_date", end);
-      params.set("ktype", "60");
-      return `${apiBase}/waizao/hour-kline?${params.toString()}`;
-    case "minute-kline":
-      params.set("code", code);
-      params.set("start_date", start);
-      params.set("end_date", end);
-      return `${apiBase}/waizao/minute-kline?${params.toString()}`;
-    default:
-      throw new Error("Unsupported Waizao dataset.");
-  }
-}
-
 async function analyzeStock() {
   const code = stockCodeInput.value.trim();
   const apiBase = normalizeApiBase(apiBaseInput.value);
@@ -714,10 +698,10 @@ async function analyzeStock() {
   }
 
   localStorage.setItem("summermax-alpha-api-base", apiBase);
+  localStorage.setItem("summermax-alpha-last-code", code);
 
   analyzeBtn.disabled = true;
   setStatus(t("loading"));
-  jsonOutputEl.textContent = "Loading...";
   analysisOutputEl.textContent = t("loading");
   llmOutputEl.textContent = useLlm ? t("gptLoading") : t("gptDisabled");
   closeSignalOutputEl.textContent = t("loading");
@@ -750,14 +734,17 @@ async function analyzeStock() {
 
       if (realtimeResponse.ok) {
         setStatus(`${t("quoteLoadedButAnalysisFailed")} ${stockError}${closeResponse.ok ? "" : ` | ${closeError}`}`, true);
-        jsonOutputEl.textContent = JSON.stringify(
-          {
-            realtime: realtimeData,
-            stock_error: stockError,
-            close_error: closeResponse.ok ? null : closeError,
-          },
-          null,
-          2,
+        localStorage.setItem(
+          "summermax-alpha-last-json",
+          JSON.stringify(
+            {
+              realtime: realtimeData,
+              stock_error: stockError,
+              close_error: closeResponse.ok ? null : closeError,
+            },
+            null,
+            2,
+          ),
         );
         renderIndicators({});
         renderRuleAnalysis({});
@@ -782,7 +769,7 @@ async function analyzeStock() {
       stockData.intraday || {},
     );
     renderHeroSummary(stockData);
-    jsonOutputEl.textContent = JSON.stringify({ stock: stockData, close: closeData }, null, 2);
+    localStorage.setItem("summermax-alpha-last-json", JSON.stringify({ stock: stockData, close: closeData }, null, 2));
     setStatus(`${t("loadedPrefix")} ${stockData.code} ${stockData.name || ""} ${t("at")} ${stockData.realtime.quote_time}.`);
   } catch (error) {
     setStatus(error.message || t("unknownError"), true);
@@ -792,42 +779,13 @@ async function analyzeStock() {
     renderRuleAnalysis({});
     renderLlmAnalysis(null);
     renderCloseSignal({}, {}, {});
-    jsonOutputEl.textContent = t("unknownError");
+    localStorage.setItem("summermax-alpha-last-json", t("unknownError"));
   } finally {
     analyzeBtn.disabled = false;
   }
 }
 
-async function fetchWaizaoData() {
-  const apiBase = normalizeApiBase(apiBaseInput.value);
-  if (!apiBase) {
-    setWaizaoStatus(t("waizaoMissingApi"), true);
-    return;
-  }
-
-  waizaoBtn.disabled = true;
-  waizaoOutputEl.textContent = "Loading...";
-  setWaizaoStatus(t("waizaoLoading"));
-
-  try {
-    const url = buildWaizaoUrl(apiBase);
-    const response = await fetch(url);
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.detail || t("unknownError"));
-    }
-    waizaoOutputEl.textContent = JSON.stringify(data, null, 2);
-    setWaizaoStatus(`${t("waizaoLoaded")} ${waizaoModeEl.value}`);
-  } catch (error) {
-    waizaoOutputEl.textContent = t("unknownError");
-    setWaizaoStatus(error.message || t("unknownError"), true);
-  } finally {
-    waizaoBtn.disabled = false;
-  }
-}
-
 analyzeBtn.addEventListener("click", analyzeStock);
-waizaoBtn.addEventListener("click", fetchWaizaoData);
 apiBaseInput.addEventListener("input", updateSetupNote);
 apiBaseInput.addEventListener("change", loadMarketQuicklists);
 stockCodeInput.addEventListener("input", searchStocks);
@@ -843,12 +801,6 @@ stockCodeInput.addEventListener("keydown", (event) => {
 apiBaseInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     analyzeStock();
-  }
-});
-
-waizaoCodeEl.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") {
-    fetchWaizaoData();
   }
 });
 

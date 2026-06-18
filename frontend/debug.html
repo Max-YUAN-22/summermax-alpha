@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SummerMax Alpha Debug Console</title>
+    <style>
+      :root {
+        --bg: #07111f;
+        --panel: rgba(10, 22, 38, 0.88);
+        --line: rgba(132, 157, 189, 0.16);
+        --text: #edf4ff;
+        --muted: #8ea3bd;
+        --accent: #66d1ff;
+        --accent-2: #24a387;
+        --danger: #ff6c7a;
+        --shadow: 0 24px 60px rgba(0, 0, 0, 0.34);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--text);
+        font-family: "Avenir Next", "PingFang SC", "Noto Sans SC", sans-serif;
+        background:
+          radial-gradient(circle at top left, rgba(102, 209, 255, 0.12), transparent 24%),
+          linear-gradient(180deg, #07111f 0%, #091726 46%, #06101c 100%);
+      }
+
+      .shell {
+        width: min(1360px, calc(100% - 28px));
+        margin: 18px auto 28px;
+      }
+
+      .topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 16px;
+        padding: 16px 18px;
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        background: linear-gradient(180deg, rgba(18, 34, 57, 0.95), rgba(10, 21, 36, 0.9));
+        box-shadow: var(--shadow);
+      }
+
+      .brand h1 {
+        margin: 0;
+        font-size: 1.18rem;
+      }
+
+      .brand p {
+        margin: 6px 0 0;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      .top-actions {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .lang-switch {
+        display: inline-flex;
+        gap: 4px;
+        padding: 4px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .lang-switch button {
+        border: none;
+        min-width: 68px;
+        padding: 8px 14px;
+        border-radius: 999px;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+        font-size: 0.9rem;
+      }
+
+      .lang-switch button.active {
+        background: linear-gradient(135deg, var(--accent), #2f9cff);
+        color: #08111d;
+        font-weight: 700;
+      }
+
+      .nav-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 11px 16px;
+        border-radius: 14px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.03);
+        color: var(--text);
+        text-decoration: none;
+        font-weight: 700;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: 360px minmax(0, 1fr);
+        gap: 16px;
+      }
+
+      .panel {
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        background: linear-gradient(180deg, var(--panel), rgba(7, 18, 31, 0.92));
+        box-shadow: var(--shadow);
+      }
+
+      .panel-head {
+        padding: 18px 20px 0;
+      }
+
+      .panel-head h2,
+      .panel-head h3 {
+        margin: 0;
+        font-size: 1rem;
+      }
+
+      .panel-head p {
+        margin: 6px 0 0;
+        color: var(--muted);
+        font-size: 0.88rem;
+        line-height: 1.5;
+      }
+
+      .panel-body {
+        padding: 18px 20px 20px;
+      }
+
+      .field {
+        margin-bottom: 14px;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 8px;
+        color: var(--muted);
+        font-size: 0.84rem;
+      }
+
+      input,
+      select {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--text);
+        padding: 14px 15px;
+        font-size: 0.96rem;
+        outline: none;
+      }
+
+      .row-2 {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .btn-primary,
+      .btn-secondary {
+        width: 100%;
+        border: none;
+        border-radius: 16px;
+        padding: 14px 18px;
+        cursor: pointer;
+        font-size: 0.96rem;
+        font-weight: 700;
+      }
+
+      .btn-primary {
+        background: linear-gradient(135deg, var(--accent), #2c8cff);
+        color: #06111d;
+      }
+
+      .btn-secondary {
+        background: linear-gradient(135deg, rgba(36, 163, 135, 0.92), rgba(28, 124, 134, 0.92));
+        color: #eafffb;
+      }
+
+      .status {
+        margin-top: 12px;
+        min-height: 22px;
+        color: var(--muted);
+        font-size: 0.88rem;
+      }
+
+      .status.error {
+        color: var(--danger);
+      }
+
+      pre {
+        margin: 0;
+        padding: 16px;
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.03);
+        color: #edf4ff;
+        line-height: 1.68;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .stack {
+        display: grid;
+        gap: 16px;
+      }
+
+      @media (max-width: 1080px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 720px) {
+        .shell {
+          width: min(100%, calc(100% - 18px));
+          margin: 10px auto 20px;
+        }
+
+        .topbar {
+          flex-direction: column;
+          align-items: stretch;
+        }
+
+        .top-actions,
+        .row-2 {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <h1 id="debugTitle">调试控制台</h1>
+          <p id="debugSubtitle">原始 JSON、Waizao 数据和接口调试放到单独页面，不干扰主工作台。</p>
+        </div>
+        <div class="top-actions">
+          <div class="lang-switch" aria-label="Language Switch">
+            <button id="langZh" class="active" type="button">中文</button>
+            <button id="langEn" type="button">EN</button>
+          </div>
+          <a class="nav-link" href="/">返回主页面</a>
+        </div>
+      </header>
+
+      <section class="layout">
+        <aside class="stack">
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <h2 id="jsonCardTitle">原始 JSON</h2>
+                <p id="jsonCardText">这里展示主页面最近一次分析结果的原始响应，也可以手动重新拉取。</p>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="field">
+                <label for="debugApiBase" id="apiBaseLabel">后端 API 地址</label>
+                <input id="debugApiBase" type="text" placeholder="https://your-api.onrender.com" />
+              </div>
+              <div class="field">
+                <label for="debugStockCode" id="stockCodeLabel">股票代码</label>
+                <input id="debugStockCode" type="text" maxlength="6" placeholder="300059" />
+              </div>
+              <button id="debugFetchBtn" class="btn-primary" type="button">重新拉取主分析 JSON</button>
+              <p id="debugStatus" class="status"></p>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <h3 id="waizaoTitle">Waizao 数据浏览</h3>
+                <p id="waizaoText">Waizao 不再放在主工作台，这里作为高级数据工具保留。</p>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="field">
+                <label for="waizaoMode" id="waizaoDatasetLabel">数据类型</label>
+                <select id="waizaoMode">
+                  <option value="base-info">Base Info</option>
+                  <option value="day-kline">Day K-Line</option>
+                  <option value="hour-kline">Hour K-Line</option>
+                  <option value="minute-kline">Minute K-Line</option>
+                  <option value="pankou">PanKou</option>
+                </select>
+              </div>
+
+              <div class="field">
+                <label for="waizaoCode" id="waizaoCodeLabel">代码 / 符号</label>
+                <input id="waizaoCode" type="text" placeholder="300059 or sz000001,sh600000" value="300059" />
+              </div>
+
+              <div class="row-2">
+                <div class="field">
+                  <label for="waizaoStart" id="waizaoStartLabel">开始</label>
+                  <input id="waizaoStart" type="text" placeholder="2026-01-01" value="2026-01-01" />
+                </div>
+                <div class="field">
+                  <label for="waizaoEnd" id="waizaoEndLabel">结束</label>
+                  <input id="waizaoEnd" type="text" placeholder="2026-06-19" value="2026-06-19" />
+                </div>
+              </div>
+
+              <button id="waizaoBtn" class="btn-secondary" type="button">查询 Waizao 数据</button>
+              <p id="waizaoStatus" class="status"></p>
+            </div>
+          </section>
+        </aside>
+
+        <section class="stack">
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <h2 id="jsonPanelTitle">原始 JSON 输出</h2>
+                <p id="jsonPanelText">用于核对字段、复制结构、调试接口返回。</p>
+              </div>
+            </div>
+            <div class="panel-body">
+              <pre id="jsonOutput">No data yet.</pre>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <h2 id="waizaoPanelTitle">Waizao 输出</h2>
+                <p id="waizaoPanelText">高级原始数据查询结果。</p>
+              </div>
+            </div>
+            <div class="panel-body">
+              <pre id="waizaoOutput">No data yet.</pre>
+            </div>
+          </section>
+        </section>
+      </section>
+    </main>
+
+    <script src="/app/debug.js"></script>
+  </body>
+</html>
