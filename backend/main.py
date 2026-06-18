@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 import akshare as ak
 import pandas as pd
 import requests
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -33,11 +33,16 @@ load_local_env()
 
 
 APP_NAME = "SummerMax Quant Alpha API"
-APP_VERSION = "0.2.0"
+APP_VERSION = "0.2.1"
 DEFAULT_LLM_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.5")
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BACKEND_DIR)
 FRONTEND_DIR = os.path.join(PROJECT_ROOT, "frontend")
+NO_CACHE_HEADERS = {
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0",
+}
 
 app = FastAPI(
     title=APP_NAME,
@@ -55,6 +60,16 @@ app.add_middleware(
 
 if os.path.isdir(FRONTEND_DIR):
     app.mount("/app", StaticFiles(directory=FRONTEND_DIR), name="frontend")
+
+
+@app.middleware("http")
+async def disable_frontend_caching(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if path in {"/", "/workspace", "/debug", "/scan"} or path.startswith("/app/"):
+        for key, value in NO_CACHE_HEADERS.items():
+            response.headers[key] = value
+    return response
 
 DEFAULT_HEADERS = {
     "User-Agent": (
@@ -1588,7 +1603,7 @@ def frontend_index() -> FileResponse:
     home_path = os.path.join(FRONTEND_DIR, "home.html")
     if not os.path.exists(home_path):
         raise HTTPException(status_code=404, detail="Frontend home.html not found.")
-    return FileResponse(home_path)
+    return FileResponse(home_path, headers=NO_CACHE_HEADERS)
 
 
 @app.get("/workspace")
@@ -1596,7 +1611,7 @@ def frontend_workspace() -> FileResponse:
     index_path = os.path.join(FRONTEND_DIR, "index.html")
     if not os.path.exists(index_path):
         raise HTTPException(status_code=404, detail="Frontend index.html not found.")
-    return FileResponse(index_path)
+    return FileResponse(index_path, headers=NO_CACHE_HEADERS)
 
 
 @app.get("/debug")
@@ -1604,7 +1619,7 @@ def frontend_debug() -> FileResponse:
     debug_path = os.path.join(FRONTEND_DIR, "debug.html")
     if not os.path.exists(debug_path):
         raise HTTPException(status_code=404, detail="Frontend debug.html not found.")
-    return FileResponse(debug_path)
+    return FileResponse(debug_path, headers=NO_CACHE_HEADERS)
 
 
 @app.get("/scan")
@@ -1612,7 +1627,7 @@ def frontend_scan() -> FileResponse:
     scan_path = os.path.join(FRONTEND_DIR, "scan.html")
     if not os.path.exists(scan_path):
         raise HTTPException(status_code=404, detail="Frontend scan.html not found.")
-    return FileResponse(scan_path)
+    return FileResponse(scan_path, headers=NO_CACHE_HEADERS)
 
 
 @app.get("/quote/realtime")
