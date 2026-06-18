@@ -1,19 +1,26 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SummerMax Quant Alpha</title>
+    <title>SummerMax Alpha Terminal</title>
     <style>
       :root {
-        --bg: #f2eee4;
-        --panel: rgba(255, 250, 241, 0.92);
-        --text: #161512;
-        --muted: #655f56;
-        --accent: #0d5b52;
-        --accent-2: #b17b2c;
-        --border: #d8cebf;
-        --danger: #b42318;
+        --bg: #07111f;
+        --bg-2: #0b1728;
+        --panel: rgba(10, 22, 38, 0.88);
+        --panel-2: rgba(17, 33, 54, 0.92);
+        --line: rgba(132, 157, 189, 0.16);
+        --line-strong: rgba(132, 157, 189, 0.28);
+        --text: #edf4ff;
+        --muted: #8ea3bd;
+        --accent: #66d1ff;
+        --accent-2: #24a387;
+        --warn: #f3b14b;
+        --danger: #ff6c7a;
+        --bull: #29c78f;
+        --bear: #ff6b7e;
+        --shadow: 0 24px 60px rgba(0, 0, 0, 0.34);
       }
 
       * {
@@ -24,92 +31,197 @@
         margin: 0;
         min-height: 100vh;
         color: var(--text);
-        font-family: "Iowan Old Style", "Palatino Linotype", serif;
+        font-family: "Avenir Next", "PingFang SC", "Noto Sans SC", sans-serif;
         background:
-          radial-gradient(circle at top right, rgba(177, 123, 44, 0.18), transparent 20%),
-          radial-gradient(circle at left 10%, rgba(13, 91, 82, 0.12), transparent 28%),
-          linear-gradient(180deg, #fbf7f0 0%, var(--bg) 100%);
+          radial-gradient(circle at top left, rgba(102, 209, 255, 0.12), transparent 24%),
+          radial-gradient(circle at top right, rgba(36, 163, 135, 0.14), transparent 22%),
+          linear-gradient(180deg, #07111f 0%, #091726 46%, #06101c 100%);
       }
 
-      .page {
-        width: min(1080px, calc(100% - 32px));
-        margin: 32px auto 48px;
+      .shell {
+        width: min(1440px, calc(100% - 28px));
+        margin: 18px auto 28px;
       }
 
-      .hero {
-        margin-bottom: 18px;
+      .topbar {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: center;
+        margin-bottom: 16px;
+        padding: 16px 18px;
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        background: linear-gradient(180deg, rgba(18, 34, 57, 0.95), rgba(10, 21, 36, 0.9));
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(12px);
       }
 
-      .eyebrow {
-        display: inline-block;
-        margin-bottom: 10px;
-        padding: 6px 10px;
-        border-radius: 999px;
-        border: 1px solid rgba(13, 91, 82, 0.18);
-        color: var(--accent);
-        background: rgba(13, 91, 82, 0.05);
-        font-size: 0.85rem;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
+      .brand {
+        display: flex;
+        gap: 14px;
+        align-items: center;
       }
 
-      h1 {
-        margin: 0 0 10px;
-        font-size: clamp(2.2rem, 5vw, 4rem);
-        letter-spacing: -0.05em;
-        line-height: 0.95;
+      .brand-mark {
+        display: grid;
+        place-items: center;
+        width: 52px;
+        height: 52px;
+        border-radius: 16px;
+        background: linear-gradient(135deg, rgba(102, 209, 255, 0.18), rgba(36, 163, 135, 0.24));
+        border: 1px solid rgba(102, 209, 255, 0.16);
+        font-size: 1.15rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
       }
 
-      .hero p {
-        max-width: 760px;
+      .brand-copy h1 {
         margin: 0;
+        font-size: 1.25rem;
+        letter-spacing: 0.02em;
+      }
+
+      .brand-copy p {
+        margin: 4px 0 0;
         color: var(--muted);
-        line-height: 1.6;
+        font-size: 0.92rem;
+      }
+
+      .topbar-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .lang-switch {
+        display: inline-flex;
+        gap: 4px;
+        padding: 4px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .lang-switch button {
+        border: none;
+        min-width: 68px;
+        padding: 8px 14px;
+        border-radius: 999px;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+        font-size: 0.9rem;
+      }
+
+      .lang-switch button.active {
+        background: linear-gradient(135deg, var(--accent), #2f9cff);
+        color: #08111d;
+        font-weight: 700;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: 340px minmax(0, 1fr);
+        gap: 16px;
+      }
+
+      .sidebar,
+      .workspace {
+        display: grid;
+        gap: 16px;
       }
 
       .panel {
-        margin-top: 18px;
-        padding: 20px;
+        border: 1px solid var(--line);
         border-radius: 24px;
-        border: 1px solid var(--border);
-        background: var(--panel);
-        box-shadow: 0 18px 48px rgba(22, 21, 18, 0.08);
-        backdrop-filter: blur(10px);
+        background: linear-gradient(180deg, var(--panel), rgba(7, 18, 31, 0.92));
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(14px);
       }
 
-      .controls {
-        display: grid;
-        grid-template-columns: 1fr 1.6fr auto auto;
+      .panel-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
         gap: 12px;
-        align-items: end;
+        padding: 18px 20px 0;
+      }
+
+      .panel-head h2,
+      .panel-head h3 {
+        margin: 0;
+        font-size: 1rem;
+        letter-spacing: 0.01em;
+      }
+
+      .panel-head p {
+        margin: 6px 0 0;
+        color: var(--muted);
+        font-size: 0.88rem;
+        line-height: 1.5;
+      }
+
+      .panel-body {
+        padding: 18px 20px 20px;
+      }
+
+      .field {
+        margin-bottom: 14px;
+      }
+
+      .field:last-child {
+        margin-bottom: 0;
       }
 
       label {
         display: block;
         margin-bottom: 8px;
         color: var(--muted);
-        font-size: 0.9rem;
+        font-size: 0.84rem;
+        letter-spacing: 0.01em;
       }
 
-      input {
+      input,
+      select,
+      textarea {
         width: 100%;
-        padding: 14px 16px;
-        border-radius: 14px;
-        border: 1px solid var(--border);
-        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.04);
         color: var(--text);
-        font-size: 1rem;
+        padding: 14px 15px;
+        font-size: 0.96rem;
+        outline: none;
+      }
+
+      input::placeholder,
+      textarea::placeholder {
+        color: #6f87a5;
+      }
+
+      input:focus,
+      select:focus,
+      textarea:focus {
+        border-color: rgba(102, 209, 255, 0.45);
+        box-shadow: 0 0 0 4px rgba(102, 209, 255, 0.08);
+      }
+
+      .row-2 {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
       }
 
       .toggle {
         display: flex;
+        justify-content: space-between;
         align-items: center;
-        gap: 10px;
-        padding: 14px 16px;
-        border-radius: 14px;
-        border: 1px solid var(--border);
-        background: #fff;
-        min-height: 52px;
+        gap: 12px;
+        padding: 14px 15px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.04);
       }
 
       .toggle input {
@@ -118,63 +230,170 @@
         margin: 0;
       }
 
-      button {
+      .toggle-copy strong {
+        display: block;
+        font-size: 0.95rem;
+      }
+
+      .toggle-copy span {
+        display: block;
+        margin-top: 3px;
+        color: var(--muted);
+        font-size: 0.8rem;
+      }
+
+      .btn-primary,
+      .btn-secondary {
+        width: 100%;
         border: none;
-        border-radius: 14px;
-        padding: 14px 20px;
-        background: linear-gradient(135deg, var(--accent), #0b4f47);
-        color: #fff;
-        font-size: 1rem;
+        border-radius: 16px;
+        padding: 14px 18px;
         cursor: pointer;
+        font-size: 0.96rem;
+        font-weight: 700;
       }
 
-      button:hover {
-        filter: brightness(1.03);
+      .btn-primary {
+        background: linear-gradient(135deg, var(--accent), #2c8cff);
+        color: #06111d;
       }
 
-      button:disabled {
-        opacity: 0.72;
+      .btn-secondary {
+        background: linear-gradient(135deg, rgba(36, 163, 135, 0.92), rgba(28, 124, 134, 0.92));
+        color: #eafffb;
+      }
+
+      .btn-primary:disabled,
+      .btn-secondary:disabled {
+        opacity: 0.6;
         cursor: wait;
       }
 
       .status {
-        min-height: 24px;
-        margin: 16px 0 0;
+        margin-top: 12px;
+        min-height: 22px;
         color: var(--muted);
+        font-size: 0.88rem;
       }
 
       .status.error {
         color: var(--danger);
       }
 
-      .setup-note {
-        margin: 14px 0 0;
-        padding: 14px 16px;
-        border-radius: 14px;
-        border: 1px solid rgba(177, 35, 24, 0.18);
-        background: rgba(177, 35, 24, 0.04);
-        color: var(--danger);
+      .help-card {
+        padding: 16px;
+        border-radius: 18px;
+        background: linear-gradient(180deg, rgba(102, 209, 255, 0.09), rgba(102, 209, 255, 0.03));
+        border: 1px solid rgba(102, 209, 255, 0.16);
+      }
+
+      .help-card strong {
+        display: block;
+        margin-bottom: 8px;
+        color: #dff5ff;
+      }
+
+      .help-card p,
+      .help-card code {
+        color: var(--muted);
+        font-size: 0.86rem;
         line-height: 1.6;
       }
 
-      .dashboard {
+      .help-card code {
+        display: inline-block;
+        margin-top: 6px;
+        color: #eef7ff;
+      }
+
+      .hero-strip {
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: 1.3fr 0.7fr;
         gap: 16px;
-        margin-top: 18px;
       }
 
-      .card {
-        padding: 18px;
+      .hero-main {
+        padding: 22px;
+      }
+
+      .hero-main h2 {
+        margin: 0;
+        font-size: clamp(1.8rem, 3vw, 2.8rem);
+        letter-spacing: -0.04em;
+        line-height: 0.96;
+      }
+
+      .hero-main p {
+        max-width: 720px;
+        margin: 10px 0 0;
+        color: var(--muted);
+        line-height: 1.65;
+      }
+
+      .hero-badges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 16px;
+      }
+
+      .badge {
+        padding: 9px 12px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.03);
+        color: #dfeeff;
+        font-size: 0.82rem;
+      }
+
+      .hero-side {
+        display: grid;
+        gap: 12px;
+        padding: 22px;
+      }
+
+      .mini-stat {
+        padding: 14px 16px;
         border-radius: 18px;
-        border: 1px solid var(--border);
-        background: rgba(255, 255, 255, 0.8);
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.03);
       }
 
-      .card h2 {
-        margin: 0 0 14px;
-        font-size: 1rem;
+      .mini-stat span {
+        display: block;
+        color: var(--muted);
+        font-size: 0.8rem;
       }
+
+      .mini-stat strong {
+        display: block;
+        margin-top: 6px;
+        font-size: 1.18rem;
+      }
+
+      .dashboard-grid {
+        display: grid;
+        grid-template-columns: repeat(12, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .col-3,
+      .col-4,
+      .col-5,
+      .col-6,
+      .col-7,
+      .col-8,
+      .col-12 {
+        min-width: 0;
+      }
+
+      .col-3 { grid-column: span 3; }
+      .col-4 { grid-column: span 4; }
+      .col-5 { grid-column: span 5; }
+      .col-6 { grid-column: span 6; }
+      .col-7 { grid-column: span 7; }
+      .col-8 { grid-column: span 8; }
+      .col-12 { grid-column: span 12; }
 
       .metric-grid {
         display: grid;
@@ -183,200 +402,464 @@
       }
 
       .metric {
-        padding: 12px;
-        border-radius: 14px;
-        background: rgba(13, 91, 82, 0.05);
-        border: 1px solid rgba(13, 91, 82, 0.12);
+        padding: 14px;
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
       }
 
       .metric-label {
         display: block;
-        margin-bottom: 4px;
         color: var(--muted);
-        font-size: 0.82rem;
+        font-size: 0.8rem;
       }
 
       .metric-value {
-        font-size: 1.1rem;
+        display: block;
+        margin-top: 8px;
+        font-size: 1.12rem;
         font-weight: 700;
       }
 
-      .analysis-text,
-      .llm-text {
-        margin: 0;
-        line-height: 1.7;
-      }
-
-      .signals {
-        margin: 14px 0 0;
-        padding-left: 18px;
-        color: var(--muted);
-      }
-
+      .summary-box,
+      .text-box,
       pre {
         margin: 0;
+        padding: 16px;
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.03);
+        color: #edf4ff;
+        line-height: 1.68;
         white-space: pre-wrap;
         word-break: break-word;
-        font-family: "SFMono-Regular", "Menlo", monospace;
-        font-size: 0.9rem;
-        color: #173833;
       }
 
-      .wide {
-        grid-column: span 3;
-      }
-
-      .section-title {
-        margin: 0 0 14px;
-        font-size: 1.05rem;
-      }
-
-      .explorer-controls {
+      .summary-box {
         display: grid;
-        grid-template-columns: 1.1fr 1fr 1fr 0.8fr auto;
         gap: 12px;
-        align-items: end;
       }
 
-      select {
-        width: 100%;
-        padding: 14px 16px;
-        border-radius: 14px;
-        border: 1px solid var(--border);
-        background: #fff;
-        color: var(--text);
-        font-size: 1rem;
+      .summary-line {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
       }
 
-      @media (max-width: 920px) {
-        .controls,
-        .explorer-controls,
-        .dashboard {
+      .summary-line span {
+        color: var(--muted);
+        font-size: 0.84rem;
+      }
+
+      .summary-line strong {
+        font-size: 0.95rem;
+      }
+
+      .decision-tag {
+        display: inline-flex;
+        align-items: center;
+        padding: 8px 12px;
+        border-radius: 999px;
+        font-size: 0.82rem;
+        font-weight: 700;
+      }
+
+      .decision-bullish {
+        color: #08151a;
+        background: linear-gradient(135deg, #4ff0af, #29c78f);
+      }
+
+      .decision-bearish {
+        color: #fff4f5;
+        background: linear-gradient(135deg, #ff7b88, #e24a61);
+      }
+
+      .decision-neutral {
+        color: #fff9eb;
+        background: linear-gradient(135deg, #f2be5c, #cb9432);
+      }
+
+      .signal-list {
+        margin: 0;
+        padding-left: 18px;
+        color: var(--muted);
+        line-height: 1.65;
+      }
+
+      .signal-list li + li {
+        margin-top: 7px;
+      }
+
+      .section-divider {
+        height: 1px;
+        margin: 14px 0;
+        background: linear-gradient(90deg, transparent, var(--line-strong), transparent);
+      }
+
+      .subgrid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .inline-note {
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 0.82rem;
+        line-height: 1.55;
+      }
+
+      .api-guide {
+        display: grid;
+        gap: 12px;
+      }
+
+      .api-guide-item {
+        padding: 14px;
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.025);
+      }
+
+      .api-guide-item strong {
+        display: block;
+        font-size: 0.92rem;
+      }
+
+      .api-guide-item p {
+        margin: 6px 0 0;
+        color: var(--muted);
+        font-size: 0.84rem;
+        line-height: 1.58;
+      }
+
+      @media (max-width: 1180px) {
+        .layout,
+        .hero-strip {
           grid-template-columns: 1fr;
         }
 
-        .wide {
+        .dashboard-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .col-3,
+        .col-4,
+        .col-5,
+        .col-6,
+        .col-7,
+        .col-8,
+        .col-12 {
           grid-column: span 1;
+        }
+      }
+
+      @media (max-width: 720px) {
+        .shell {
+          width: min(100%, calc(100% - 18px));
+          margin: 10px auto 20px;
+        }
+
+        .topbar {
+          flex-direction: column;
+          align-items: stretch;
+        }
+
+        .topbar-actions {
+          justify-content: space-between;
+        }
+
+        .row-2,
+        .subgrid,
+        .metric-grid {
+          grid-template-columns: 1fr;
         }
       }
     </style>
   </head>
   <body>
-    <main class="page">
-      <section class="hero">
-        <span class="eyebrow">SummerMax Quant Alpha</span>
-        <h1>Realtime A-Share Signal Desk</h1>
-        <p>
-          This dashboard combines realtime A-share quotes, moving-average signals, and optional
-          GPT interpretation for intraday and close-session decision support. Summer guards
-          warmth, Max pursues extremes. In an uncertain market, the goal is to find deterministic
-          alpha.
-        </p>
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark">SM</div>
+          <div class="brand-copy">
+            <h1 data-i18n="brandTitle">SummerMax Alpha Terminal</h1>
+            <p data-i18n="brandSubtitle">实时股票预测分析台，面向 A 股研究与 GPT 5.5 结构化判断。</p>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <div class="lang-switch" aria-label="Language Switch">
+            <button id="langZh" class="active" type="button">中文</button>
+            <button id="langEn" type="button">EN</button>
+          </div>
+        </div>
+      </header>
+
+      <section class="hero-strip">
+        <section class="panel hero-main">
+          <h2 data-i18n="heroTitle">做实时判断，不做花哨堆砌。</h2>
+          <p data-i18n="heroText">
+            这个界面把信息重组为三层：先看方向和风险，再看技术和盘中结构，最后再看 GPT
+            5.5 的结构化解释。目标不是“看起来很 AI”，而是更接近专业分析工作台。
+          </p>
+          <div class="hero-badges">
+            <span class="badge" data-i18n="badge1">Realtime Quote</span>
+            <span class="badge" data-i18n="badge2">Intraday Context</span>
+            <span class="badge" data-i18n="badge3">Scorecard</span>
+            <span class="badge" data-i18n="badge4">GPT 5.5 Analysis</span>
+          </div>
+        </section>
+
+        <section class="panel hero-side">
+          <div class="mini-stat">
+            <span data-i18n="miniApiLabel">GPT API 设置位置</span>
+            <strong data-i18n="miniApiValue">后端环境变量</strong>
+          </div>
+          <div class="mini-stat">
+            <span data-i18n="miniKeysLabel">必填</span>
+            <strong><code>OPENAI_API_KEY</code></strong>
+          </div>
+          <div class="mini-stat">
+            <span data-i18n="miniOptionalLabel">可选</span>
+            <strong><code>OPENAI_BASE_URL / OPENAI_MODEL</code></strong>
+          </div>
+        </section>
       </section>
 
-      <section class="panel">
-        <div class="controls">
-          <div>
-            <label for="stockCode">Stock Code</label>
-            <input id="stockCode" type="text" maxlength="6" placeholder="300059" value="300059" />
-          </div>
+      <div class="layout">
+        <aside class="sidebar">
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <h2 data-i18n="controlTitle">控制台</h2>
+                <p data-i18n="controlText">先填后端地址和股票代码，再决定是否启用 GPT 分析。</p>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="field">
+                <label for="stockCode" data-i18n="stockCodeLabel">股票代码</label>
+                <input id="stockCode" type="text" maxlength="6" placeholder="300059" value="300059" />
+              </div>
 
-          <div>
-            <label for="apiBase">Backend API Base URL</label>
-            <input id="apiBase" type="text" placeholder="https://your-api.onrender.com" />
-          </div>
+              <div class="field">
+                <label for="apiBase" data-i18n="apiBaseLabel">后端 API 地址</label>
+                <input id="apiBase" type="text" placeholder="https://your-api.onrender.com" />
+              </div>
 
-          <label class="toggle" for="useLlm">
-            <input id="useLlm" type="checkbox" />
-            <span>Enable GPT analysis</span>
-          </label>
+              <div class="field">
+                <label class="toggle" for="useLlm">
+                  <div class="toggle-copy">
+                    <strong data-i18n="gptToggleTitle">启用 GPT 5.5 分析</strong>
+                    <span data-i18n="gptToggleText">需要后端已配置 OpenAI API Key。</span>
+                  </div>
+                  <input id="useLlm" type="checkbox" />
+                </label>
+              </div>
 
-          <button id="analyzeBtn">Analyze</button>
-        </div>
+              <button id="analyzeBtn" class="btn-primary" type="button" data-i18n="analyzeBtn">开始分析</button>
+              <p id="status" class="status"></p>
 
-        <p id="status" class="status"></p>
-        <div id="setupNote" class="setup-note">
-          Realtime A-share analysis requires a live backend API. Connect a deployed backend URL
-          before this dashboard can fetch quotes and compute signals.
-        </div>
+              <div id="setupNote" class="help-card">
+                <strong data-i18n="setupTitle">为什么现在可能还不能跑？</strong>
+                <p data-i18n="setupText">
+                  这个前端只是工作台。真正抓行情、算指标、调用 GPT 的地方在后端 API。你需要先部署或启动后端。
+                </p>
+              </div>
+            </div>
+          </section>
 
-        <div class="dashboard">
-          <article class="card">
-            <h2>Realtime Quote</h2>
-            <div id="realtimeMetrics" class="metric-grid"></div>
-          </article>
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <h3 data-i18n="apiGuideTitle">GPT API 在哪里设置</h3>
+                <p data-i18n="apiGuideText">不是在这个网页里填，是在后端环境变量里设置。</p>
+              </div>
+            </div>
+            <div class="panel-body api-guide">
+              <div class="api-guide-item">
+                <strong>1. <span data-i18n="apiGuideItem1Title">必填 Key</span></strong>
+                <p><code>OPENAI_API_KEY=你的 key</code></p>
+              </div>
+              <div class="api-guide-item">
+                <strong>2. <span data-i18n="apiGuideItem2Title">模型名称</span></strong>
+                <p><code>OPENAI_MODEL=gpt-5.5</code></p>
+              </div>
+              <div class="api-guide-item">
+                <strong>3. <span data-i18n="apiGuideItem3Title">兼容网关可选</span></strong>
+                <p><code>OPENAI_BASE_URL=https://your-gateway/v1</code></p>
+              </div>
+              <div class="api-guide-item">
+                <strong>4. <span data-i18n="apiGuideItem4Title">本地启动示例</span></strong>
+                <p><code>cd backend && uvicorn main:app --reload --port 8000</code></p>
+              </div>
+            </div>
+          </section>
 
-          <article class="card">
-            <h2>Technical Snapshot</h2>
-            <div id="indicatorMetrics" class="metric-grid"></div>
-          </article>
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <h3 data-i18n="waizaoTitle">Waizao 数据浏览</h3>
+                <p data-i18n="waizaoText">如果你要看原始数据、分钟线或盘口，就在这里单独查。</p>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="field">
+                <label for="waizaoMode" data-i18n="waizaoDatasetLabel">数据类型</label>
+                <select id="waizaoMode">
+                  <option value="base-info">Base Info</option>
+                  <option value="day-kline">Day K-Line</option>
+                  <option value="hour-kline">Hour K-Line</option>
+                  <option value="minute-kline">Minute K-Line</option>
+                  <option value="pankou">PanKou</option>
+                </select>
+              </div>
 
-          <article class="card">
-            <h2>Rule Analysis</h2>
-            <p id="analysisOutput" class="analysis-text">No analysis yet.</p>
-            <ul id="signalsOutput" class="signals"></ul>
-          </article>
+              <div class="field">
+                <label for="waizaoCode" data-i18n="waizaoCodeLabel">代码 / 符号</label>
+                <input id="waizaoCode" type="text" placeholder="300059 or sz000001,sh600000" value="300059" />
+              </div>
 
-          <article class="card">
-            <h2>GPT Analysis</h2>
-            <p id="llmOutput" class="llm-text">GPT analysis is disabled.</p>
-          </article>
+              <div class="row-2">
+                <div class="field">
+                  <label for="waizaoStart" data-i18n="waizaoStartLabel">开始</label>
+                  <input id="waizaoStart" type="text" placeholder="2026-01-01" value="2026-01-01" />
+                </div>
+                <div class="field">
+                  <label for="waizaoEnd" data-i18n="waizaoEndLabel">结束</label>
+                  <input id="waizaoEnd" type="text" placeholder="2026-06-19" value="2026-06-19" />
+                </div>
+              </div>
 
-          <article class="card">
-            <h2>Decision & Risk</h2>
-            <p id="closeSignalOutput" class="analysis-text">No decision signal yet.</p>
-          </article>
+              <button id="waizaoBtn" class="btn-secondary" type="button" data-i18n="waizaoBtn">查询原始数据</button>
+              <p id="waizaoStatus" class="status"></p>
+            </div>
+          </section>
+        </aside>
 
-          <article class="card wide">
-            <h2>API Response</h2>
-            <pre id="jsonOutput">No data yet.</pre>
-          </article>
-        </div>
-      </section>
+        <section class="workspace">
+          <section class="dashboard-grid">
+            <article class="panel col-7">
+              <div class="panel-head">
+                <div>
+                  <h2 data-i18n="overviewTitle">分析总览</h2>
+                  <p data-i18n="overviewText">先看方向、评分和风险，再决定要不要继续细读。</p>
+                </div>
+              </div>
+              <div class="panel-body summary-box">
+                <div class="summary-line">
+                  <span data-i18n="overviewDirection">方向</span>
+                  <strong id="heroDirection">-</strong>
+                </div>
+                <div class="summary-line">
+                  <span data-i18n="overviewConfidence">置信度</span>
+                  <strong id="heroConfidence">-</strong>
+                </div>
+                <div class="summary-line">
+                  <span data-i18n="overviewTimeframe">时间框架</span>
+                  <strong id="heroTimeframe">-</strong>
+                </div>
+                <div class="summary-line">
+                  <span data-i18n="overviewScore">综合评分</span>
+                  <strong id="heroScore">-</strong>
+                </div>
+                <div class="summary-line">
+                  <span data-i18n="overviewDecision">决策偏向</span>
+                  <strong id="heroDecisionTag" class="decision-tag decision-neutral">-</strong>
+                </div>
+              </div>
+            </article>
 
-      <section class="panel">
-        <h2 class="section-title">Waizao Explorer</h2>
-        <div class="explorer-controls">
-          <div>
-            <label for="waizaoMode">Dataset</label>
-            <select id="waizaoMode">
-              <option value="base-info">Base Info</option>
-              <option value="day-kline">Day K-Line</option>
-              <option value="hour-kline">Hour K-Line</option>
-              <option value="minute-kline">Minute K-Line</option>
-              <option value="pankou">PanKou</option>
-            </select>
-          </div>
+            <article class="panel col-5">
+              <div class="panel-head">
+                <div>
+                  <h2 data-i18n="riskTitle">风险与盘中结构</h2>
+                  <p data-i18n="riskText">风险等级、盘中趋势、最后一根 bar 时间都在这里。</p>
+                </div>
+              </div>
+              <div class="panel-body">
+                <p id="closeSignalOutput" class="text-box" data-i18n-fallback="noDecision">No decision signal yet.</p>
+              </div>
+            </article>
 
-          <div>
-            <label for="waizaoCode">Code / Symbol</label>
-            <input id="waizaoCode" type="text" placeholder="300059 or sz000001,sh600000" value="300059" />
-          </div>
+            <article class="panel col-4">
+              <div class="panel-head">
+                <div>
+                  <h3 data-i18n="quoteTitle">实时行情</h3>
+                  <p data-i18n="quoteText">实时价格、涨跌、开高低与成交额。</p>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div id="realtimeMetrics" class="metric-grid"></div>
+              </div>
+            </article>
 
-          <div>
-            <label for="waizaoStart">Start</label>
-            <input id="waizaoStart" type="text" placeholder="2026-01-01 or 2026-01-01 09:30:00" value="2026-01-01" />
-          </div>
+            <article class="panel col-4">
+              <div class="panel-head">
+                <div>
+                  <h3 data-i18n="techTitle">技术指标</h3>
+                  <p data-i18n="techText">日线均线、RSI、成交量基线。</p>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div id="indicatorMetrics" class="metric-grid"></div>
+              </div>
+            </article>
 
-          <div>
-            <label for="waizaoEnd">End</label>
-            <input id="waizaoEnd" type="text" placeholder="2026-06-19 or 2026-06-19 15:00:00" value="2026-06-19" />
-          </div>
+            <article class="panel col-4">
+              <div class="panel-head">
+                <div>
+                  <h3 data-i18n="ruleTitle">规则引擎</h3>
+                  <p data-i18n="ruleText">给你一个不依赖 GPT 的基础判断层。</p>
+                </div>
+              </div>
+              <div class="panel-body">
+                <p id="analysisOutput" class="text-box" data-i18n-fallback="noAnalysis">No analysis yet.</p>
+                <div class="section-divider"></div>
+                <ul id="signalsOutput" class="signal-list"></ul>
+              </div>
+            </article>
 
-          <button id="waizaoBtn">Fetch</button>
-        </div>
+            <article class="panel col-8">
+              <div class="panel-head">
+                <div>
+                  <h2 data-i18n="gptTitle">GPT 5.5 结构化分析</h2>
+                  <p data-i18n="gptText">不是只给一段话，而是方向、时间框架、关键位、催化与风险。</p>
+                </div>
+              </div>
+              <div class="panel-body">
+                <p id="llmOutput" class="text-box" data-i18n-fallback="gptDisabled">GPT analysis is disabled.</p>
+              </div>
+            </article>
 
-        <p id="waizaoStatus" class="status"></p>
+            <article class="panel col-4">
+              <div class="panel-head">
+                <div>
+                  <h2 data-i18n="waizaoOutputTitle">Waizao 输出</h2>
+                  <p data-i18n="waizaoOutputText">如果你在左侧查了原始数据，结果显示在这里。</p>
+                </div>
+              </div>
+              <div class="panel-body">
+                <pre id="waizaoOutput">No data yet.</pre>
+              </div>
+            </article>
 
-        <div class="dashboard">
-          <article class="card wide">
-            <h2>Waizao Response</h2>
-            <pre id="waizaoOutput">No data yet.</pre>
-          </article>
-        </div>
-      </section>
+            <article class="panel col-12">
+              <div class="panel-head">
+                <div>
+                  <h2 data-i18n="jsonTitle">原始 JSON</h2>
+                  <p data-i18n="jsonText">如果想核对字段、调试接口或复制数据，看这里。</p>
+                </div>
+              </div>
+              <div class="panel-body">
+                <pre id="jsonOutput">No data yet.</pre>
+              </div>
+            </article>
+          </section>
+        </section>
+      </div>
     </main>
 
     <script src="./app.js"></script>
   </body>
-  </html>
+</html>

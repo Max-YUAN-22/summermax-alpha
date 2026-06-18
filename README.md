@@ -260,6 +260,40 @@ curl "http://127.0.0.1:8000/analysis/close?code=300059&use_llm=true"
 curl "http://127.0.0.1:8000/watchlist/analyze?codes=300059,600519,000001"
 ```
 
+### One-command local run
+
+From the repository root:
+
+```bash
+chmod +x run_local.sh
+./run_local.sh
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8000
+```
+
+The backend now serves the frontend directly, so local frontend and backend are deployed together through one FastAPI process.
+
+### GPT API configuration
+
+Configure these in backend environment variables or a local `.env` workflow you use before starting:
+
+```bash
+OPENAI_API_KEY=your_api_key
+OPENAI_MODEL=gpt-5.5
+OPENAI_BASE_URL=https://your-compatible-gateway/v1
+```
+
+For your current Render deployment and OpenAI-compatible gateway, the intended values are:
+
+```bash
+OPENAI_MODEL=gpt-5.5
+OPENAI_BASE_URL=https://www.yunqiaoai.top/v1
+```
+
 ## Frontend
 
 The frontend is plain static HTML and JavaScript, so it can be deployed to GitHub Pages.

@@ -8,14 +8,36 @@ import pandas as pd
 import requests
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from openai import OpenAI
 
 import waizao_client
 
 
+def load_local_env() -> None:
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    if not os.path.exists(env_path):
+        return
+
+    with open(env_path, "r", encoding="utf-8") as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            os.environ.setdefault(key.strip(), value.strip())
+
+
+load_local_env()
+
+
 APP_NAME = "SummerMax Quant Alpha API"
 APP_VERSION = "0.2.0"
 DEFAULT_LLM_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.5")
+BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(BACKEND_DIR)
+FRONTEND_DIR = os.path.join(PROJECT_ROOT, "frontend")
 
 app = FastAPI(
     title=APP_NAME,
@@ -30,6 +52,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+if os.path.isdir(FRONTEND_DIR):
+    app.mount("/app", StaticFiles(directory=FRONTEND_DIR), name="frontend")
 
 DEFAULT_HEADERS = {
     "User-Agent": (
@@ -1101,6 +1126,14 @@ def health() -> Dict[str, Any]:
         "llm_configured": bool(os.getenv("OPENAI_API_KEY")),
         "waizao_configured": waizao_client.is_configured(),
     }
+
+
+@app.get("/")
+def frontend_index() -> FileResponse:
+    index_path = os.path.join(FRONTEND_DIR, "index.html")
+    if not os.path.exists(index_path):
+        raise HTTPException(status_code=404, detail="Frontend index.html not found.")
+    return FileResponse(index_path)
 
 
 @app.get("/quote/realtime")
