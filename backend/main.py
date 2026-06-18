@@ -10,6 +10,8 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
 
+import waizao_client
+
 
 APP_NAME = "SummerMax Quant Alpha API"
 APP_VERSION = "0.2.0"
@@ -119,6 +121,63 @@ def fetch_stock_history_from_sina(code: str, start_date: datetime, end_date: dat
     return normalize_history_dataframe(raw_df)
 
 
+def normalize_waizao_history_payload(payload: Any) -> pd.DataFrame:
+    if isinstance(payload, dict):
+        for key in ("data", "list", "rows", "result"):
+            if isinstance(payload.get(key), list):
+                payload = payload[key]
+                break
+
+    if not isinstance(payload, list) or not payload:
+        raise ValueError("Unexpected Waizao history payload.")
+
+    df = pd.DataFrame(payload)
+    renamed = df.rename(
+        columns={
+            "date": "date",
+            "tradeDate": "date",
+            "day": "date",
+            "openPrice": "open",
+            "closePrice": "close",
+            "close": "close",
+            "volume": "volume",
+            "vol": "volume",
+            "成交量": "volume",
+        }
+    )
+
+    required = {"date", "close", "volume"}
+    if not required.issubset(renamed.columns):
+        raise ValueError("Waizao payload does not contain date/close/volume fields.")
+
+    normalized = renamed.loc[:, ["date", "close", "volume"]].copy()
+    normalized["date"] = pd.to_datetime(normalized["date"])
+    normalized["close"] = pd.to_numeric(normalized["close"], errors="coerce")
+    normalized["volume"] = pd.to_numeric(normalized["volume"], errors="coerce")
+    normalized = normalized.dropna(subset=["date", "close", "volume"]).sort_values("date")
+    if normalized.empty:
+        raise ValueError("Waizao history payload is empty after normalization.")
+    return normalized
+
+
+def fetch_stock_history_from_waizao(code: str, start_date: datetime, end_date: datetime) -> pd.DataFrame:
+    result = waizao_client.request_api(
+        "getDayKLine",
+        params={
+            "type": 1,
+            "code": code,
+            "ktype": 101,
+            "fq": 1,
+            "startDate": start_date.strftime("%Y-%m-%d"),
+            "endDate": end_date.strftime("%Y-%m-%d"),
+            "fields": "all",
+            "filter": "",
+        },
+        method="post",
+    )
+    return normalize_waizao_history_payload(result["data"])
+
+
 def fetch_stock_history(code: str) -> tuple[pd.DataFrame, str]:
     end_date = datetime.today()
     start_date = end_date - timedelta(days=120)
@@ -134,7 +193,152 @@ def fetch_stock_history(code: str) -> tuple[pd.DataFrame, str]:
     except Exception as exc:
         errors.append(f"sina history failed: {exc}")
 
+    try:
+        return fetch_stock_history_from_waizao(code, start_date, end_date).tail(60).reset_index(drop=True), "waizaowang.getDayKLine"
+    except Exception as exc:
+        errors.append(f"waizao history failed: {exc}")
+
     raise ValueError(f"Failed to fetch historical stock data: {' | '.join(errors)}")
+
+
+def normalize_intraday_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        raise ValueError("No intraday data returned from data source.")
+
+    renamed = df.rename(
+        columns={
+            "时间": "datetime",
+            "日期时间": "datetime",
+            "day": "datetime",
+            "date": "datetime",
+            "close": "close",
+            "收盘": "close",
+            "成交量": "volume",
+            "volume": "volume",
+        }
+    )
+
+    required = {"datetime", "close"}
+    if not required.issubset(renamed.columns):
+        raise ValueError("Unexpected intraday data format.")
+
+    normalized = renamed.copy()
+    normalized["datetime"] = pd.to_datetime(normalized["datetime"])
+    normalized["close"] = pd.to_numeric(normalized["close"], errors="coerce")
+    if "volume" in normalized.columns:
+        normalized["volume"] = pd.to_numeric(normalized["volume"], errors="coerce")
+    else:
+        normalized["volume"] = 0
+    normalized = normalized.dropna(subset=["datetime", "close"]).sort_values("datetime")
+    if normalized.empty:
+        raise ValueError("Intraday data is empty after normalization.")
+    return normalized.loc[:, ["datetime", "close", "volume"]]
+
+
+def normalize_waizao_intraday_payload(payload: Any) -> pd.DataFrame:
+    if isinstance(payload, dict):
+        for key in ("data", "list", "rows", "result"):
+            if isinstance(payload.get(key), list):
+                payload = payload[key]
+                break
+    if not isinstance(payload, list) or not payload:
+        raise ValueError("Unexpected Waizao intraday payload.")
+
+    df = pd.DataFrame(payload)
+    renamed = df.rename(
+        columns={
+            "date": "datetime",
+            "datetime": "datetime",
+            "time": "datetime",
+            "tradeDate": "datetime",
+            "close": "close",
+            "closePrice": "close",
+            "volume": "volume",
+            "vol": "volume",
+        }
+    )
+
+    if not {"datetime", "close"}.issubset(renamed.columns):
+        raise ValueError("Waizao intraday payload missing datetime/close.")
+
+    normalized = renamed.copy()
+    normalized["datetime"] = pd.to_datetime(normalized["datetime"])
+    normalized["close"] = pd.to_numeric(normalized["close"], errors="coerce")
+    normalized["volume"] = pd.to_numeric(normalized.get("volume", 0), errors="coerce").fillna(0)
+    normalized = normalized.dropna(subset=["datetime", "close"]).sort_values("datetime")
+    if normalized.empty:
+        raise ValueError("Waizao intraday payload is empty after normalization.")
+    return normalized.loc[:, ["datetime", "close", "volume"]]
+
+
+def fetch_intraday_bars_from_em(code: str) -> pd.DataFrame:
+    raw_df = ak.stock_zh_a_hist_min_em(symbol=code, period="15", adjust="")
+    return normalize_intraday_dataframe(raw_df)
+
+
+def fetch_intraday_bars_from_waizao(code: str) -> pd.DataFrame:
+    now = datetime.now()
+    start = now.replace(hour=9, minute=30, second=0, microsecond=0)
+    end = now
+    result = waizao_client.request_api(
+        "getHourKLine",
+        params={
+            "type": 1,
+            "code": code,
+            "ktype": 15,
+            "startDate": start.strftime("%Y-%m-%d %H:%M:%S"),
+            "endDate": end.strftime("%Y-%m-%d %H:%M:%S"),
+            "fields": "all",
+            "filter": "",
+        },
+        method="post",
+    )
+    return normalize_waizao_intraday_payload(result["data"])
+
+
+def compute_intraday_context(df: pd.DataFrame) -> Dict[str, Any]:
+    working = df.copy().tail(32).reset_index(drop=True)
+    working["ema8"] = compute_ema(working["close"], 8)
+    working["ema21"] = compute_ema(working["close"], 21)
+
+    latest = working.iloc[-1]
+    first = working.iloc[0]
+    session_change_percent = None
+    if first["close"]:
+        session_change_percent = round(((latest["close"] - first["close"]) / first["close"]) * 100, 2)
+
+    last4_high = round(float(working["close"].tail(4).max()), 2)
+    last4_low = round(float(working["close"].tail(4).min()), 2)
+
+    return {
+        "latest_close": round(float(latest["close"]), 2),
+        "ema8": round(float(latest["ema8"]), 2),
+        "ema21": round(float(latest["ema21"]), 2),
+        "intraday_trend": "bullish" if latest["ema8"] > latest["ema21"] else "neutral_or_bearish",
+        "session_change_percent": session_change_percent,
+        "bars_count": int(len(working)),
+        "last4_range_high": last4_high,
+        "last4_range_low": last4_low,
+        "last_bar_time": latest["datetime"].strftime("%Y-%m-%d %H:%M:%S"),
+    }
+
+
+def fetch_intraday_context(code: str) -> tuple[Optional[Dict[str, Any]], Optional[str]]:
+    errors: List[str] = []
+
+    try:
+        bars = fetch_intraday_bars_from_em(code)
+        return compute_intraday_context(bars), "akshare.stock_zh_a_hist_min_em"
+    except Exception as exc:
+        errors.append(f"eastmoney intraday failed: {exc}")
+
+    try:
+        bars = fetch_intraday_bars_from_waizao(code)
+        return compute_intraday_context(bars), "waizaowang.getHourKLine"
+    except Exception as exc:
+        errors.append(f"waizao intraday failed: {exc}")
+
+    return None, " | ".join(errors) if errors else None
 
 
 def normalize_realtime_dataframe(df: pd.DataFrame) -> pd.DataFrame:
@@ -636,14 +840,137 @@ def build_final_decision(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def build_scorecard(snapshot: Dict[str, Any]) -> Dict[str, Any]:
+    indicators = snapshot["indicators"]
+    realtime = snapshot["realtime"]
+    intraday = snapshot.get("intraday")
+
+    trend_score = 25
+    if indicators["ma5"] > indicators["ma10"] > indicators["ma20"]:
+        trend_score = 85
+    elif indicators["ma5"] > indicators["ma10"]:
+        trend_score = 68
+    elif indicators["ma5"] < indicators["ma10"] < indicators["ma20"]:
+        trend_score = 25
+    else:
+        trend_score = 48
+
+    momentum_score = 50
+    if indicators["macd_diff"] > indicators["macd_dea"] and indicators["rsi14"] >= 50:
+        momentum_score = 76
+    elif indicators["rsi14"] < 40:
+        momentum_score = 34
+
+    flow_score = 50
+    if indicators["volume_ratio"] is not None and indicators["volume_ratio"] >= 1.2:
+        flow_score += 15
+    if realtime.get("turnover_rate") is not None and realtime["turnover_rate"] >= 2:
+        flow_score += 15
+    flow_score = min(flow_score, 90)
+
+    risk_score = 40
+    if snapshot["risk_assessment"]["level"] == "high":
+        risk_score = 78
+    elif snapshot["risk_assessment"]["level"] == "medium":
+        risk_score = 52
+    if indicators["rsi14"] > 70:
+        risk_score = max(risk_score, 72)
+
+    intraday_score = None
+    if intraday:
+        intraday_score = 72 if intraday["intraday_trend"] == "bullish" else 38
+
+    components = {
+        "trend": trend_score,
+        "momentum": momentum_score,
+        "flow": flow_score,
+        "risk": risk_score,
+    }
+    if intraday_score is not None:
+        components["intraday"] = intraday_score
+
+    positive_scores = [trend_score, momentum_score, flow_score]
+    if intraday_score is not None:
+        positive_scores.append(intraday_score)
+
+    total_score = round((sum(positive_scores) / len(positive_scores)) * 0.75 + (100 - risk_score) * 0.25, 1)
+
+    return {
+        "total": total_score,
+        "components": components,
+        "grading": (
+            "A" if total_score >= 80 else
+            "B" if total_score >= 65 else
+            "C" if total_score >= 50 else
+            "D"
+        ),
+    }
+
+
+def build_llm_context(snapshot: Dict[str, Any]) -> Dict[str, Any]:
+    technical = snapshot["technical_analysis"]
+    return {
+        "market": "CN-A",
+        "task": "realtime_stock_prediction_analysis",
+        "objective": (
+            "Assess the most likely short-term directional bias for this stock using the "
+            "realtime quote, 60-day indicators, rule-analysis output, and risk block."
+        ),
+        "constraints": [
+            "No guarantee language.",
+            "No claims of certainty.",
+            "No automated execution instructions.",
+            "Focus on intraday to short swing trading interpretation.",
+        ],
+        "required_output_schema": {
+            "direction": "bullish | neutral | bearish",
+            "confidence": "integer 0-100",
+            "timeframe": "intraday | 1-3d | 1-2w",
+            "scorecard": {
+                "trend": "integer 0-100",
+                "momentum": "integer 0-100",
+                "flow": "integer 0-100",
+                "risk": "integer 0-100",
+                "overall": "integer 0-100",
+            },
+            "thesis": "one concise paragraph",
+            "bull_case": "short text",
+            "bear_case": "short text",
+            "key_levels": {
+                "support": ["string or number"],
+                "resistance": ["string or number"],
+            },
+            "catalysts": ["short bullet item"],
+            "risks": ["short bullet item"],
+            "action_bias": "watch_pullback | breakout_watch | avoid_chasing | reduce_risk | neutral_wait",
+            "referee": "final balancing sentence",
+        },
+        "snapshot_summary": {
+            "code": snapshot["code"],
+            "name": snapshot["name"],
+            "realtime": snapshot["realtime"],
+            "indicators": snapshot["indicators"],
+            "intraday": snapshot.get("intraday"),
+            "technical_analysis": {
+                "summary": technical["summary"],
+                "detail": technical["detail"],
+                "aggregate_score": technical["aggregate_score"],
+                "signals": technical["signals"],
+            },
+            "scorecard": snapshot["scorecard"],
+            "risk_assessment": snapshot["risk_assessment"],
+            "final_decision": snapshot["final_decision"],
+        },
+    }
+
+
 def build_llm_prompt(snapshot: Dict[str, Any]) -> str:
     return (
-        "You are a disciplined A-share market analysis assistant. "
-        "Given the JSON snapshot below, produce a short analysis in JSON with keys: "
-        "bull_case, bear_case, referee. "
-        "Do not provide execution instructions, guarantees, or promises. "
-        "Keep it factual, concise, and suitable for a decision-support dashboard.\n\n"
-        f"{json.dumps(snapshot, ensure_ascii=False)}"
+        "You are a disciplined realtime stock analysis assistant focused on Chinese A-shares. "
+        "Return valid JSON only. "
+        "Base your answer on the provided snapshot. "
+        "Use concise professional language suitable for a decision-support dashboard.\n\n"
+        f"{json.dumps(build_llm_context(snapshot), ensure_ascii=False)}"
     )
 
 
@@ -659,8 +986,9 @@ def generate_llm_analysis(snapshot: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                 {
                     "role": "system",
                     "content": (
-                        "You are a disciplined A-share market analysis assistant. "
-                        "Return concise JSON only with keys bull_case, bear_case, referee."
+                        "You are a disciplined realtime A-share market analysis assistant. "
+                        "You reason like a senior discretionary trader but stay factual. "
+                        "Return valid JSON only, matching the user-provided schema exactly."
                     ),
                 },
                 {
@@ -687,6 +1015,12 @@ def generate_llm_analysis(snapshot: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                 "engine": DEFAULT_LLM_MODEL,
                 "status": "ok",
                 "content": parsed,
+                "summary": {
+                    "direction": parsed.get("direction"),
+                    "confidence": parsed.get("confidence"),
+                    "timeframe": parsed.get("timeframe"),
+                    "action_bias": parsed.get("action_bias"),
+                },
             }
         except json.JSONDecodeError:
             return {
@@ -712,28 +1046,41 @@ def build_snapshot(code: str, include_llm: bool) -> Dict[str, Any]:
     history_df, history_source = fetch_stock_history(code)
     indicators = compute_indicators(history_df)
     realtime = fetch_realtime_quote(code)
+    intraday_context, intraday_source = fetch_intraday_context(code)
     core_snapshot = {
         "code": code,
         "realtime": realtime,
         "indicators": indicators,
+        "intraday": intraday_context,
     }
     technical_analysis = build_technical_analysis(core_snapshot)
     risk_assessment = build_risk_assessment(core_snapshot)
     final_decision = build_final_decision(core_snapshot)
+    scorecard = build_scorecard(
+        {
+            **core_snapshot,
+            "technical_analysis": technical_analysis,
+            "risk_assessment": risk_assessment,
+            "final_decision": final_decision,
+        }
+    )
 
     snapshot = {
         "code": code,
         "name": realtime["name"],
         "realtime": realtime,
         "indicators": indicators,
+        "intraday": intraday_context,
         "analysis": technical_analysis,
         "technical_analysis": technical_analysis,
         "risk_assessment": risk_assessment,
         "final_decision": final_decision,
+        "scorecard": scorecard,
         "meta": {
             "market": "CN-A",
             "history_source": history_source,
-            "realtime_source": "akshare.stock_zh_a_spot_em",
+            "realtime_source": realtime.get("source"),
+            "intraday_source": intraday_source,
             "lookback_trading_days": 60,
             "adjustment": "qfq",
             "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -752,6 +1099,7 @@ def health() -> Dict[str, Any]:
         "app": APP_NAME,
         "version": APP_VERSION,
         "llm_configured": bool(os.getenv("OPENAI_API_KEY")),
+        "waizao_configured": waizao_client.is_configured(),
     }
 
 
@@ -843,3 +1191,112 @@ def analyze_watchlist(
             "error_count": len(errors),
         },
     }
+
+
+@app.get("/waizao/pankou")
+def get_waizao_pankou(
+    code: str = Query(..., min_length=8, description="Market symbol list such as sz000001,sh600000"),
+) -> Dict[str, Any]:
+    try:
+        return waizao_client.get_pankou(code)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {exc}") from exc
+
+
+@app.get("/waizao/day-kline")
+def get_waizao_day_kline(
+    code: str = Query(..., description="Single 6-digit A-share stock code"),
+    start_date: str = Query(..., description="YYYY-MM-DD"),
+    end_date: str = Query(..., description="YYYY-MM-DD"),
+    fq: int = Query(1, description="0 no adjust, 1 qfq, 2 hfq"),
+) -> Dict[str, Any]:
+    try:
+        return waizao_client.request_api(
+            "getDayKLine",
+            {
+                "type": 1,
+                "code": code,
+                "ktype": 101,
+                "fq": fq,
+                "startDate": start_date,
+                "endDate": end_date,
+                "fields": "all",
+                "filter": "",
+            },
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {exc}") from exc
+
+
+@app.get("/waizao/hour-kline")
+def get_waizao_hour_kline(
+    code: str = Query(..., description="Single 6-digit A-share stock code"),
+    start_date: str = Query(..., description="YYYY-MM-DD HH:mm:ss"),
+    end_date: str = Query(..., description="YYYY-MM-DD HH:mm:ss"),
+    ktype: int = Query(60, description="5, 15, 30, 60"),
+) -> Dict[str, Any]:
+    try:
+        return waizao_client.request_api(
+            "getHourKLine",
+            {
+                "type": 1,
+                "code": code,
+                "ktype": ktype,
+                "startDate": start_date,
+                "endDate": end_date,
+                "fields": "all",
+                "filter": "",
+            },
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {exc}") from exc
+
+
+@app.get("/waizao/minute-kline")
+def get_waizao_minute_kline(
+    code: str = Query(..., description="Single 6-digit A-share stock code"),
+    start_date: str = Query(..., description="YYYY-MM-DD HH:mm:ss"),
+    end_date: str = Query(..., description="YYYY-MM-DD HH:mm:ss"),
+) -> Dict[str, Any]:
+    try:
+        return waizao_client.request_api(
+            "getMinuteKLine",
+            {
+                "type": 1,
+                "code": code,
+                "startDate": start_date,
+                "endDate": end_date,
+                "fields": "all",
+                "filter": "",
+            },
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {exc}") from exc
+
+
+@app.get("/waizao/base-info")
+def get_waizao_base_info(
+    code: str = Query(..., description="Single or multiple stock codes separated by commas"),
+) -> Dict[str, Any]:
+    try:
+        return waizao_client.request_api(
+            "getBaseInfo",
+            {
+                "type": 1,
+                "code": code,
+                "fields": "all",
+                "filter": "",
+            },
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {exc}") from exc

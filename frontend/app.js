@@ -13,6 +13,13 @@ const signalsOutputEl = document.getElementById("signalsOutput");
 const llmOutputEl = document.getElementById("llmOutput");
 const closeSignalOutputEl = document.getElementById("closeSignalOutput");
 const jsonOutputEl = document.getElementById("jsonOutput");
+const waizaoModeEl = document.getElementById("waizaoMode");
+const waizaoCodeEl = document.getElementById("waizaoCode");
+const waizaoStartEl = document.getElementById("waizaoStart");
+const waizaoEndEl = document.getElementById("waizaoEnd");
+const waizaoBtn = document.getElementById("waizaoBtn");
+const waizaoStatusEl = document.getElementById("waizaoStatus");
+const waizaoOutputEl = document.getElementById("waizaoOutput");
 
 const savedApiBase = localStorage.getItem("summermax-alpha-api-base");
 if (savedApiBase) {
@@ -24,6 +31,11 @@ if (savedApiBase) {
 function setStatus(message, isError = false) {
   statusEl.textContent = message;
   statusEl.classList.toggle("error", isError);
+}
+
+function setWaizaoStatus(message, isError = false) {
+  waizaoStatusEl.textContent = message;
+  waizaoStatusEl.classList.toggle("error", isError);
 }
 
 function updateSetupNote() {
@@ -38,6 +50,54 @@ function updateSetupNote() {
 
 function normalizeApiBase(input) {
   return input.trim().replace(/\/+$/, "");
+}
+
+function buildWaizaoUrl(apiBase) {
+  const mode = waizaoModeEl.value;
+  const code = waizaoCodeEl.value.trim();
+  const start = waizaoStartEl.value.trim();
+  const end = waizaoEndEl.value.trim();
+
+  if (!code) {
+    throw new Error("Please enter a Waizao code or symbol.");
+  }
+
+  const params = new URLSearchParams();
+  switch (mode) {
+    case "base-info":
+      params.set("code", code);
+      return `${apiBase}/waizao/base-info?${params.toString()}`;
+    case "pankou":
+      params.set("code", code);
+      return `${apiBase}/waizao/pankou?${params.toString()}`;
+    case "day-kline":
+      if (!start || !end) {
+        throw new Error("Day K-Line requires start and end dates.");
+      }
+      params.set("code", code);
+      params.set("start_date", start);
+      params.set("end_date", end);
+      return `${apiBase}/waizao/day-kline?${params.toString()}`;
+    case "hour-kline":
+      if (!start || !end) {
+        throw new Error("Hour K-Line requires start and end datetimes.");
+      }
+      params.set("code", code);
+      params.set("start_date", start);
+      params.set("end_date", end);
+      params.set("ktype", "60");
+      return `${apiBase}/waizao/hour-kline?${params.toString()}`;
+    case "minute-kline":
+      if (!start || !end) {
+        throw new Error("Minute K-Line requires start and end datetimes.");
+      }
+      params.set("code", code);
+      params.set("start_date", start);
+      params.set("end_date", end);
+      return `${apiBase}/waizao/minute-kline?${params.toString()}`;
+    default:
+      throw new Error("Unsupported Waizao dataset.");
+  }
 }
 
 function formatNumber(value) {
@@ -115,9 +175,29 @@ function renderLlmAnalysis(llmAnalysis) {
 
   if (llmAnalysis.status === "ok" && llmAnalysis.content) {
     const content = llmAnalysis.content;
+    const support = Array.isArray(content.key_levels?.support)
+      ? content.key_levels.support.join(", ")
+      : "-";
+    const resistance = Array.isArray(content.key_levels?.resistance)
+      ? content.key_levels.resistance.join(", ")
+      : "-";
+    const catalysts = Array.isArray(content.catalysts) ? content.catalysts.join("; ") : "-";
+    const risks = Array.isArray(content.risks) ? content.risks.join("; ") : "-";
+    const modelScorecard = content.scorecard || {};
+
     llmOutputEl.textContent = [
+      `Direction: ${content.direction || "-"}`,
+      `Confidence: ${content.confidence ?? "-"}/100`,
+      `Timeframe: ${content.timeframe || "-"}`,
+      `Model Scorecard: trend ${modelScorecard.trend ?? "-"} | momentum ${modelScorecard.momentum ?? "-"} | flow ${modelScorecard.flow ?? "-"} | risk ${modelScorecard.risk ?? "-"} | overall ${modelScorecard.overall ?? "-"}`,
+      `Action Bias: ${content.action_bias || "-"}`,
+      `Thesis: ${content.thesis || "No thesis."}`,
       `Bull: ${content.bull_case || "No bull case."}`,
       `Bear: ${content.bear_case || "No bear case."}`,
+      `Support: ${support}`,
+      `Resistance: ${resistance}`,
+      `Catalysts: ${catalysts}`,
+      `Risks: ${risks}`,
       `Referee: ${content.referee || "No referee summary."}`,
     ].join("\n");
     return;
@@ -131,7 +211,7 @@ function renderLlmAnalysis(llmAnalysis) {
   llmOutputEl.textContent = "GPT analysis did not return usable content.";
 }
 
-function renderCloseSignal(closeSignal = {}, riskAssessment = {}, finalDecision = {}) {
+function renderCloseSignal(closeSignal = {}, riskAssessment = {}, finalDecision = {}, scorecard = {}, intraday = {}) {
   if (!closeSignal.note && !finalDecision.note) {
     closeSignalOutputEl.textContent = "No decision signal yet.";
     return;
@@ -143,6 +223,12 @@ function renderCloseSignal(closeSignal = {}, riskAssessment = {}, finalDecision 
   }
   if (riskAssessment.level || Array.isArray(riskAssessment.items)) {
     lines.push(`Risk: ${riskAssessment.level || "-"} | ${(riskAssessment.items || []).join(" ")}`);
+  }
+  if (scorecard.total != null) {
+    lines.push(`Scorecard: ${scorecard.total} | Grade ${scorecard.grading || "-"}`);
+  }
+  if (intraday && intraday.last_bar_time) {
+    lines.push(`Intraday: ${intraday.intraday_trend || "-"} | ${intraday.session_change_percent ?? "-"}% | ${intraday.last_bar_time}`);
   }
   if (closeSignal.note) {
     lines.push(`Close: ${closeSignal.bias} | ${closeSignal.note}`);
@@ -228,7 +314,13 @@ async function analyzeStock() {
     renderIndicators(stockData.indicators);
     renderRuleAnalysis(stockData.analysis);
     renderLlmAnalysis(stockData.llm_analysis);
-    renderCloseSignal(closeData.close_signal, stockData.risk_assessment, stockData.final_decision);
+    renderCloseSignal(
+      closeData.close_signal,
+      stockData.risk_assessment,
+      stockData.final_decision,
+      stockData.scorecard,
+      stockData.intraday,
+    );
     jsonOutputEl.textContent = JSON.stringify({ stock: stockData, close: closeData }, null, 2);
     setStatus(`Loaded ${stockData.code} ${stockData.name || ""} at ${stockData.realtime.quote_time}.`);
   } catch (error) {
@@ -244,7 +336,36 @@ async function analyzeStock() {
   }
 }
 
+async function fetchWaizaoData() {
+  const apiBase = normalizeApiBase(apiBaseInput.value);
+  if (!apiBase) {
+    setWaizaoStatus("Enter a backend API base URL first.", true);
+    return;
+  }
+
+  waizaoBtn.disabled = true;
+  waizaoOutputEl.textContent = "Loading...";
+  setWaizaoStatus("Loading Waizao dataset...");
+
+  try {
+    const url = buildWaizaoUrl(apiBase);
+    const response = await fetch(url);
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.detail || "Waizao request failed.");
+    }
+    waizaoOutputEl.textContent = JSON.stringify(data, null, 2);
+    setWaizaoStatus(`Loaded ${waizaoModeEl.value} successfully.`);
+  } catch (error) {
+    waizaoOutputEl.textContent = "Request failed.";
+    setWaizaoStatus(error.message || "Unknown error.", true);
+  } finally {
+    waizaoBtn.disabled = false;
+  }
+}
+
 analyzeBtn.addEventListener("click", analyzeStock);
+waizaoBtn.addEventListener("click", fetchWaizaoData);
 apiBaseInput.addEventListener("input", updateSetupNote);
 
 stockCodeInput.addEventListener("keydown", (event) => {
@@ -256,6 +377,12 @@ stockCodeInput.addEventListener("keydown", (event) => {
 apiBaseInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     analyzeStock();
+  }
+});
+
+waizaoCodeEl.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    fetchWaizaoData();
   }
 });
 

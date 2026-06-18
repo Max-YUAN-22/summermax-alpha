@@ -3,3 +3,4 @@ uvicorn[standard]==0.30.6
 akshare==1.18.64
 pandas==2.2.2
 openai==1.54.3
+requests==2.32.3

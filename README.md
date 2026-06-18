@@ -19,6 +19,12 @@ SummerMax Quant Alpha is a minimal decision-support app for Chinese A-share anal
 
 This project does not execute trades. It is intentionally limited to analysis and signal support.
 
+Primary goal:
+
+- realtime stock prediction-style analysis
+- technical signal synthesis
+- structured GPT 5.5 interpretation as a stronger decision-support brain
+
 ## Project Structure
 
 ```text
@@ -36,11 +42,13 @@ summermax-alpha/
 
 - Input a 6-digit A-share stock code such as `300059`
 - Fetch realtime quote data from direct public quote endpoints with AKShare fallback
-- Fetch 60 trading-day historical data with fallback data sources
+- Fetch 60 trading-day historical data with fallback data sources, including Waizao day-kline when configured
 - Compute `MA5`, `MA10`, `MA20`, `MA25`, `MA55`, `RSI14`, `MACD`, `KDJ`, `VOL5`, `VOL60`
 - Return `technical_analysis`, `risk_assessment`, and `final_decision`
 - Support watchlist batch scanning
 - Optionally call OpenAI for bull-case / bear-case / referee interpretation
+- Optionally call GPT 5.5 for structured direction, confidence, timeframe, thesis, key levels, catalysts, and risk interpretation
+- Integrate Waizao dataset access for base info, day kline, hour kline, minute kline, and pankou
 - Keep response structure ready for chat tool integration
 
 ## API Endpoints
@@ -73,6 +81,26 @@ This is for end-of-session decision support only. It does not place orders.
 ### `GET /watchlist/analyze?codes=300059,600519,000001&use_llm=false`
 
 Returns a batch scan result for up to 20 stock codes, including per-code errors.
+
+### `GET /waizao/base-info?code=300059`
+
+Returns Waizao base information for one or more stock codes.
+
+### `GET /waizao/day-kline?code=300059&start_date=2026-01-01&end_date=2026-06-19`
+
+Returns Waizao daily k-line data.
+
+### `GET /waizao/hour-kline?code=300059&start_date=2026-06-19%2009:30:00&end_date=2026-06-19%2015:00:00&ktype=60`
+
+Returns Waizao intraday 5/15/30/60-minute k-line data.
+
+### `GET /waizao/minute-kline?code=300059&start_date=2026-06-19%2009:30:00&end_date=2026-06-19%2015:00:00`
+
+Returns Waizao minute-level data.
+
+### `GET /waizao/pankou?code=sz000001,sh600000`
+
+Returns Sina spider-based five-level order book data exposed through the backend.
 
 ## Example Response
 
@@ -195,7 +223,13 @@ Optional for GPT analysis:
 export OPENAI_API_KEY="your_api_key"
 export OPENAI_MODEL="gpt-5.5"
 export OPENAI_BASE_URL="https://www.yunqiaoai.top/v1"
+export WAIZAO_TOKEN="your_waizao_token"
 ```
+
+Optional for Waizao-compatible dataset access:
+
+- `WAIZAO_TOKEN`
+- `WAIZAO_BASE_URL` defaults to `http://api.waizaowang.com/doc`
 
 For your current gateway setup, the backend is configured to work with OpenAI-compatible `chat.completions` endpoints such as:
 
@@ -236,6 +270,7 @@ When you open the page:
 - enter a stock code
 - enable GPT analysis only if your backend has `OPENAI_API_KEY`
 - click `Analyze`
+- use the `Waizao Explorer` panel to query Waizao datasets directly after `WAIZAO_TOKEN` is configured
 
 ## Deploy Backend to Railway
 

@@ -226,8 +226,31 @@
         grid-column: span 3;
       }
 
+      .section-title {
+        margin: 0 0 14px;
+        font-size: 1.05rem;
+      }
+
+      .explorer-controls {
+        display: grid;
+        grid-template-columns: 1.1fr 1fr 1fr 0.8fr auto;
+        gap: 12px;
+        align-items: end;
+      }
+
+      select {
+        width: 100%;
+        padding: 14px 16px;
+        border-radius: 14px;
+        border: 1px solid var(--border);
+        background: #fff;
+        color: var(--text);
+        font-size: 1rem;
+      }
+
       @media (max-width: 920px) {
         .controls,
+        .explorer-controls,
         .dashboard {
           grid-template-columns: 1fr;
         }
@@ -307,6 +330,48 @@
           <article class="card wide">
             <h2>API Response</h2>
             <pre id="jsonOutput">No data yet.</pre>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2 class="section-title">Waizao Explorer</h2>
+        <div class="explorer-controls">
+          <div>
+            <label for="waizaoMode">Dataset</label>
+            <select id="waizaoMode">
+              <option value="base-info">Base Info</option>
+              <option value="day-kline">Day K-Line</option>
+              <option value="hour-kline">Hour K-Line</option>
+              <option value="minute-kline">Minute K-Line</option>
+              <option value="pankou">PanKou</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="waizaoCode">Code / Symbol</label>
+            <input id="waizaoCode" type="text" placeholder="300059 or sz000001,sh600000" value="300059" />
+          </div>
+
+          <div>
+            <label for="waizaoStart">Start</label>
+            <input id="waizaoStart" type="text" placeholder="2026-01-01 or 2026-01-01 09:30:00" value="2026-01-01" />
+          </div>
+
+          <div>
+            <label for="waizaoEnd">End</label>
+            <input id="waizaoEnd" type="text" placeholder="2026-06-19 or 2026-06-19 15:00:00" value="2026-06-19" />
+          </div>
+
+          <button id="waizaoBtn">Fetch</button>
+        </div>
+
+        <p id="waizaoStatus" class="status"></p>
+
+        <div class="dashboard">
+          <article class="card wide">
+            <h2>Waizao Response</h2>
+            <pre id="waizaoOutput">No data yet.</pre>
           </article>
         </div>
       </section>
