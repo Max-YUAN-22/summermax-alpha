@@ -27,6 +27,14 @@ const quicklistActiveEl = document.getElementById("quicklistActive");
 const quicklistCapsEl = document.getElementById("quicklistCaps");
 const chartMetaLeftEl = document.getElementById("chartMetaLeft");
 const chartMetaRightEl = document.getElementById("chartMetaRight");
+const periodDailyBtn = document.getElementById("periodDaily");
+const period60Btn = document.getElementById("period60");
+const period15Btn = document.getElementById("period15");
+const fundFlowMetricsEl = document.getElementById("fundFlowMetrics");
+const fundFlowSignalsEl = document.getElementById("fundFlowSignals");
+const assistantLogEl = document.getElementById("assistantLog");
+const assistantQuestionEl = document.getElementById("assistantQuestion");
+const assistantAskBtn = document.getElementById("assistantAskBtn");
 
 const I18N = {
   zh: {
@@ -42,6 +50,8 @@ const I18N = {
     miniApiValue: "后端环境变量",
     miniKeysLabel: "必填",
     miniOptionalLabel: "可选",
+    navWorkspace: "工作台",
+    navDebug: "调试台",
     controlTitle: "控制台",
     controlText: "先填后端地址和股票代码，再决定是否启用 GPT 分析。",
     stockCodeLabel: "股票代码",
@@ -82,6 +92,9 @@ const I18N = {
     legendMa20: "MA20",
     chartMetaLeft: "K线 + MA5 + MA20 + 成交量",
     chartMetaRight: "近 60 个交易日",
+    periodDaily: "日线",
+    period60: "60 分钟",
+    period15: "15 分钟",
     quicklistsTitle: "市场快速选股",
     quicklistsText: "不需要先记代码。直接从强势、弱势、活跃和大市值列表里点选开始分析。",
     quicklistGainers: "涨幅榜",
@@ -90,6 +103,22 @@ const I18N = {
     quicklistCaps: "大市值",
     quickAmount: "成交额",
     quickMcap: "市值",
+    fundFlowTitle: "资金流与主力净流入",
+    fundFlowText: "看主力、超大单、大单资金方向，避免只看价格不看资金。",
+    mainNetInflow: "主力净流入",
+    mainNetRatio: "主力净占比",
+    superNetInflow: "超大单净流入",
+    largeNetInflow: "大单净流入",
+    mediumNetInflow: "中单净流入",
+    smallNetInflow: "小单净流入",
+    assistantTitle: "AI 助手追问",
+    assistantText: "围绕当前股票继续追问，不需要每次重新组织上下文。",
+    assistantAskBtn: "继续追问",
+    assistantPlaceholder: "例如：这个位置是回调买点还是该继续观望？",
+    assistantEmpty: "还没有追问记录。",
+    assistantYou: "你",
+    assistantModel: "AI 助手",
+    assistantLoading: "AI 助手正在思考...",
     noDecision: "还没有决策结果。",
     noAnalysis: "还没有分析结果。",
     gptDisabled: "GPT 分析当前未启用。",
@@ -155,6 +184,8 @@ const I18N = {
     miniApiValue: "Backend environment variables",
     miniKeysLabel: "Required",
     miniOptionalLabel: "Optional",
+    navWorkspace: "Workspace",
+    navDebug: "Debug",
     controlTitle: "Control Panel",
     controlText: "Enter your backend URL and stock code first, then decide whether to enable GPT.",
     stockCodeLabel: "Stock Code",
@@ -195,6 +226,9 @@ const I18N = {
     legendMa20: "MA20",
     chartMetaLeft: "Candles + MA5 + MA20 + Volume",
     chartMetaRight: "Last 60 Trading Days",
+    periodDaily: "Daily",
+    period60: "60 Min",
+    period15: "15 Min",
     quicklistsTitle: "Market Quick Picks",
     quicklistsText: "No need to remember stock codes first. Start from gainers, losers, active turnover, or large caps.",
     quicklistGainers: "Top Gainers",
@@ -203,6 +237,22 @@ const I18N = {
     quicklistCaps: "Large Caps",
     quickAmount: "Amount",
     quickMcap: "Mkt Cap",
+    fundFlowTitle: "Capital Flow",
+    fundFlowText: "Read main-force and block-order flow so price is not your only signal.",
+    mainNetInflow: "Main Net Inflow",
+    mainNetRatio: "Main Net Ratio",
+    superNetInflow: "Super Large Inflow",
+    largeNetInflow: "Large Order Inflow",
+    mediumNetInflow: "Medium Order Inflow",
+    smallNetInflow: "Small Order Inflow",
+    assistantTitle: "AI Follow-up Assistant",
+    assistantText: "Ask follow-up questions about the current stock without rebuilding context every time.",
+    assistantAskBtn: "Ask Follow-up",
+    assistantPlaceholder: "For example: Is this a buy-on-pullback area or still a wait-and-see setup?",
+    assistantEmpty: "No follow-up messages yet.",
+    assistantYou: "You",
+    assistantModel: "AI Assistant",
+    assistantLoading: "AI assistant is thinking...",
     noDecision: "No decision signal yet.",
     noAnalysis: "No analysis yet.",
     gptDisabled: "GPT analysis is currently disabled.",
@@ -258,6 +308,8 @@ const I18N = {
 };
 
 let currentLang = localStorage.getItem("summermax-alpha-lang") || "zh";
+let currentPeriod = localStorage.getItem("summermax-alpha-period") || "daily";
+let currentStockContext = null;
 
 function t(key) {
   return I18N[currentLang][key] || I18N.zh[key] || key;
@@ -285,6 +337,12 @@ function setLanguage(lang) {
   }
   if (chartMetaRightEl && !chartMetaRightEl.dataset.dynamic) {
     chartMetaRightEl.textContent = t("chartMetaRight");
+  }
+  if (assistantQuestionEl) {
+    assistantQuestionEl.placeholder = t("assistantPlaceholder");
+  }
+  if (assistantAskBtn) {
+    assistantAskBtn.textContent = t("assistantAskBtn");
   }
 }
 
@@ -328,6 +386,15 @@ function createMetric(label, value) {
       <span class="metric-value">${value}</span>
     </div>
   `;
+}
+
+function formatSignedNumber(value) {
+  const num = Number(value);
+  if (Number.isNaN(num)) {
+    return "-";
+  }
+  const text = formatCompactNumber(num);
+  return num > 0 ? `+${text}` : text;
 }
 
 function renderRealtime(realtime = {}) {
@@ -589,6 +656,122 @@ function renderCloseSignal(closeSignal = {}, riskAssessment = {}, finalDecision 
   closeSignalOutputEl.textContent = lines.length ? lines.join("\n") : t("noDecision");
 }
 
+function renderFundFlow(payload = {}) {
+  const latest = payload.latest || {};
+  fundFlowMetricsEl.innerHTML = [
+    createMetric(t("mainNetInflow"), formatSignedNumber(latest.main_net_inflow)),
+    createMetric(t("mainNetRatio"), latest.main_net_ratio != null ? `${formatNumber(latest.main_net_ratio)}%` : "-"),
+    createMetric(t("superNetInflow"), formatSignedNumber(latest.super_net_inflow)),
+    createMetric(t("largeNetInflow"), formatSignedNumber(latest.large_net_inflow)),
+  ].join("");
+
+  const signals = [];
+  if (payload.status === "fallback_rank" && payload.ranking) {
+    signals.push(`Rank: ${payload.ranking.today_rank || "-"} | ${t("mainNetRatio")}: ${payload.latest.main_net_ratio ?? "-"}%`);
+    signals.push(`5D: ${payload.ranking.five_day_main_ratio ?? "-"}% | 10D: ${payload.ranking.ten_day_main_ratio ?? "-"}%`);
+    signals.push(`Sector: ${payload.ranking.sector || "-"}`);
+  } else if (Array.isArray(payload.series) && payload.series.length) {
+    const last3 = payload.series.slice(-3).map((item) => `${item.date}: ${formatSignedNumber(item.main_net_inflow)} | ${item.main_net_ratio ?? "-"}%`);
+    signals.push(...last3);
+  } else if (payload.detail) {
+    signals.push(payload.detail);
+  }
+
+  fundFlowSignalsEl.innerHTML = signals.map((signal) => `<li>${signal}</li>`).join("");
+}
+
+function setActivePeriod(period) {
+  currentPeriod = period;
+  localStorage.setItem("summermax-alpha-period", period);
+  [periodDailyBtn, period60Btn, period15Btn].forEach((button) => {
+    if (!button) {
+      return;
+    }
+    button.classList.toggle("active", button.dataset.period === period);
+  });
+}
+
+async function loadChartPeriod(period, code = stockCodeInput.value.trim()) {
+  const apiBase = normalizeApiBase(apiBaseInput.value);
+  if (!apiBase || !/^\d{6}$/.test(code)) {
+    return;
+  }
+
+  setActivePeriod(period);
+  try {
+    const response = await fetch(`${apiBase}/chart/multiperiod?code=${encodeURIComponent(code)}&period=${encodeURIComponent(period)}`);
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.detail || t("unknownError"));
+    }
+    renderChart(data.chart);
+  } catch {
+    renderChart({});
+  }
+}
+
+function renderAssistantLog(items) {
+  if (!assistantLogEl) {
+    return;
+  }
+
+  if (!items.length) {
+    assistantLogEl.innerHTML = `<div class="assistant-msg"><span class="assistant-role">${t("assistantModel")}</span><p class="assistant-content">${t("assistantEmpty")}</p></div>`;
+    return;
+  }
+
+  assistantLogEl.innerHTML = items.map((item) => `
+    <div class="assistant-msg">
+      <span class="assistant-role">${item.role === "user" ? t("assistantYou") : t("assistantModel")}</span>
+      <p class="assistant-content">${item.content}</p>
+    </div>
+  `).join("");
+  assistantLogEl.scrollTop = assistantLogEl.scrollHeight;
+}
+
+function appendAssistantMessage(role, content) {
+  const history = JSON.parse(localStorage.getItem("summermax-alpha-assistant-history") || "[]");
+  history.push({ role, content });
+  localStorage.setItem("summermax-alpha-assistant-history", JSON.stringify(history));
+  renderAssistantLog(history);
+}
+
+async function askAssistant() {
+  const code = stockCodeInput.value.trim();
+  const apiBase = normalizeApiBase(apiBaseInput.value);
+  const question = assistantQuestionEl.value.trim();
+  if (!apiBase || !/^\d{6}$/.test(code) || question.length < 2) {
+    return;
+  }
+
+  appendAssistantMessage("user", question);
+  assistantQuestionEl.value = "";
+  appendAssistantMessage("assistant", t("assistantLoading"));
+  assistantAskBtn.disabled = true;
+
+  try {
+    const response = await fetch(`${apiBase}/assistant/chat?code=${encodeURIComponent(code)}&question=${encodeURIComponent(question)}`);
+    const data = await response.json();
+    const history = JSON.parse(localStorage.getItem("summermax-alpha-assistant-history") || "[]");
+    if (history.length) {
+      history.pop();
+    }
+    history.push({ role: "assistant", content: response.ok ? (data.content || t("unknownError")) : (data.detail || t("unknownError")) });
+    localStorage.setItem("summermax-alpha-assistant-history", JSON.stringify(history));
+    renderAssistantLog(history);
+  } catch {
+    const history = JSON.parse(localStorage.getItem("summermax-alpha-assistant-history") || "[]");
+    if (history.length) {
+      history.pop();
+    }
+    history.push({ role: "assistant", content: t("unknownError") });
+    localStorage.setItem("summermax-alpha-assistant-history", JSON.stringify(history));
+    renderAssistantLog(history);
+  } finally {
+    assistantAskBtn.disabled = false;
+  }
+}
+
 function renderQuicklist(el, items = [], mode = "change") {
   if (!el) {
     return;
@@ -710,21 +893,25 @@ async function analyzeStock() {
   signalsOutputEl.innerHTML = "";
   renderChart({});
   renderHeroSummary({});
+  renderFundFlow({});
 
   try {
     const realtimeUrl = `${apiBase}/quote/realtime?code=${encodeURIComponent(code)}`;
     const stockUrl = `${apiBase}/stock?code=${encodeURIComponent(code)}&use_llm=${useLlm}`;
     const closeUrl = `${apiBase}/analysis/close?code=${encodeURIComponent(code)}&use_llm=${useLlm}`;
+    const fundFlowUrl = `${apiBase}/fund-flow/stock?code=${encodeURIComponent(code)}`;
 
-    const [realtimeResponse, stockResponse, closeResponse] = await Promise.all([
+    const [realtimeResponse, stockResponse, closeResponse, fundFlowResponse] = await Promise.all([
       fetch(realtimeUrl),
       fetch(stockUrl),
       fetch(closeUrl),
+      fetch(fundFlowUrl),
     ]);
 
     const realtimeData = await realtimeResponse.json();
     const stockData = await stockResponse.json();
     const closeData = await closeResponse.json();
+    const fundFlowData = await fundFlowResponse.json();
 
     renderRealtime(realtimeResponse.ok ? realtimeData.realtime : {});
 
@@ -750,6 +937,7 @@ async function analyzeStock() {
         renderRuleAnalysis({});
         renderLlmAnalysis(null);
         renderCloseSignal({}, {}, {});
+        renderFundFlow({});
         return;
       }
 
@@ -761,6 +949,7 @@ async function analyzeStock() {
     renderChart(stockData.chart);
     renderRuleAnalysis(stockData.analysis);
     renderLlmAnalysis(stockData.llm_analysis);
+    renderFundFlow(fundFlowResponse.ok ? fundFlowData : {});
     renderCloseSignal(
       closeData.close_signal,
       stockData.risk_assessment,
@@ -769,8 +958,14 @@ async function analyzeStock() {
       stockData.intraday || {},
     );
     renderHeroSummary(stockData);
+    currentStockContext = stockData;
     localStorage.setItem("summermax-alpha-last-json", JSON.stringify({ stock: stockData, close: closeData }, null, 2));
+    localStorage.setItem("summermax-alpha-assistant-history", JSON.stringify([]));
+    renderAssistantLog([]);
     setStatus(`${t("loadedPrefix")} ${stockData.code} ${stockData.name || ""} ${t("at")} ${stockData.realtime.quote_time}.`);
+    if (currentPeriod !== "daily") {
+      await loadChartPeriod(currentPeriod, code);
+    }
   } catch (error) {
     setStatus(error.message || t("unknownError"), true);
     renderRealtime({});
@@ -779,6 +974,7 @@ async function analyzeStock() {
     renderRuleAnalysis({});
     renderLlmAnalysis(null);
     renderCloseSignal({}, {}, {});
+    renderFundFlow({});
     localStorage.setItem("summermax-alpha-last-json", t("unknownError"));
   } finally {
     analyzeBtn.disabled = false;
@@ -791,6 +987,10 @@ apiBaseInput.addEventListener("change", loadMarketQuicklists);
 stockCodeInput.addEventListener("input", searchStocks);
 langZhBtn.addEventListener("click", () => setLanguage("zh"));
 langEnBtn.addEventListener("click", () => setLanguage("en"));
+assistantAskBtn.addEventListener("click", askAssistant);
+periodDailyBtn.addEventListener("click", () => loadChartPeriod("daily"));
+period60Btn.addEventListener("click", () => loadChartPeriod("60"));
+period15Btn.addEventListener("click", () => loadChartPeriod("15"));
 
 stockCodeInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
@@ -801,6 +1001,12 @@ stockCodeInput.addEventListener("keydown", (event) => {
 apiBaseInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     analyzeStock();
+  }
+});
+
+assistantQuestionEl.addEventListener("keydown", (event) => {
+  if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+    askAssistant();
   }
 });
 
@@ -837,4 +1043,7 @@ renderHeroSummary({});
 renderRuleAnalysis({});
 renderLlmAnalysis(null);
 renderCloseSignal({}, {}, {});
+renderFundFlow({});
+renderAssistantLog(JSON.parse(localStorage.getItem("summermax-alpha-assistant-history") || "[]"));
+setActivePeriod(currentPeriod);
 loadMarketQuicklists();

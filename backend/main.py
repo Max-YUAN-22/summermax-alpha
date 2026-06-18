@@ -270,6 +270,46 @@ def fetch_stock_history(code: str) -> tuple[pd.DataFrame, str]:
     raise ValueError(f"Failed to fetch historical stock data: {' | '.join(errors)}")
 
 
+def fetch_multiperiod_history_from_em(code: str, period: str) -> pd.DataFrame:
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=45 if period == "60" else 12)
+    raw_df = ak.stock_zh_a_hist_min_em(
+        symbol=code,
+        start_date=start_date.strftime("%Y-%m-%d %H:%M:%S"),
+        end_date=end_date.strftime("%Y-%m-%d %H:%M:%S"),
+        period=period,
+        adjust="",
+    )
+    if raw_df is None or raw_df.empty:
+        raise ValueError("No multi-period history returned from Eastmoney.")
+
+    renamed = raw_df.rename(
+        columns={
+            "时间": "date",
+            "开盘": "open",
+            "最高": "high",
+            "最低": "low",
+            "收盘": "close",
+            "成交量": "volume",
+            "成交额": "amount",
+            "换手率": "turnover_rate",
+        }
+    )
+    required = {"date", "open", "high", "low", "close", "volume"}
+    if not required.issubset(renamed.columns):
+        raise ValueError("Unexpected multi-period history format.")
+
+    normalized = renamed.loc[:, [column for column in ["date", "open", "high", "low", "close", "volume", "amount", "turnover_rate"] if column in renamed.columns]].copy()
+    normalized["date"] = pd.to_datetime(normalized["date"])
+    for field in ["open", "high", "low", "close", "volume", "amount", "turnover_rate"]:
+        if field in normalized.columns:
+            normalized[field] = pd.to_numeric(normalized[field], errors="coerce")
+    normalized = normalized.dropna(subset=["date", "open", "high", "low", "close", "volume"]).sort_values("date")
+    if normalized.empty:
+        raise ValueError("Multi-period history is empty after normalization.")
+    return normalized.tail(160).reset_index(drop=True)
+
+
 def normalize_intraday_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty:
         raise ValueError("No intraday data returned from data source.")
@@ -690,6 +730,189 @@ def build_chart_payload(df: pd.DataFrame) -> Dict[str, Any]:
             "low": round(float(working["close"].tail(60).min()), 2),
         },
     }
+
+
+def build_multiperiod_chart_payload(df: pd.DataFrame, period: str) -> Dict[str, Any]:
+    working = df.copy().reset_index(drop=True)
+    working["ma5"] = working["close"].rolling(window=5).mean()
+    working["ma20"] = working["close"].rolling(window=20).mean()
+
+    points: List[Dict[str, Any]] = []
+    for _, row in working.tail(120).iterrows():
+        points.append(
+            {
+                "date": row["date"].strftime("%Y-%m-%d %H:%M"),
+                "open": round(float(row["open"]), 2),
+                "high": round(float(row["high"]), 2),
+                "low": round(float(row["low"]), 2),
+                "close": round(float(row["close"]), 2),
+                "volume": round(float(row["volume"]), 2),
+                "amount": round(float(row["amount"]), 2) if pd.notna(row.get("amount")) else None,
+                "turnover_rate": round(float(row["turnover_rate"]), 2) if pd.notna(row.get("turnover_rate")) else None,
+                "ma5": round(float(row["ma5"]), 2) if pd.notna(row["ma5"]) else None,
+                "ma20": round(float(row["ma20"]), 2) if pd.notna(row["ma20"]) else None,
+            }
+        )
+
+    period_label = {"15": "15m", "60": "60m"}.get(period, period)
+    return {
+        "series": points,
+        "summary": {
+            "period_label": period_label,
+            "bars": len(points),
+            "high": round(float(working["high"].tail(120).max()), 2),
+            "low": round(float(working["low"].tail(120).min()), 2),
+        },
+    }
+
+
+def to_market_prefix(code: str) -> str:
+    if code.startswith(("5", "6", "9")):
+        return "sh"
+    if code.startswith(("4", "8")):
+        return "bj"
+    return "sz"
+
+
+def fetch_stock_fund_flow(code: str) -> Dict[str, Any]:
+    market = to_market_prefix(code)
+    errors: List[str] = []
+
+    try:
+        detail_df = ak.stock_individual_fund_flow(stock=code, market=market)
+        if detail_df is None or detail_df.empty:
+            raise ValueError("No individual fund-flow detail returned.")
+        latest = detail_df.iloc[-1]
+        series = []
+        for _, row in detail_df.tail(10).iterrows():
+            series.append(
+                {
+                    "date": str(row["日期"]),
+                    "main_net_inflow": safe_float(row["主力净流入-净额"]),
+                    "main_net_ratio": safe_float(row["主力净流入-净占比"]),
+                    "super_net_inflow": safe_float(row["超大单净流入-净额"]),
+                    "large_net_inflow": safe_float(row["大单净流入-净额"]),
+                    "medium_net_inflow": safe_float(row["中单净流入-净额"]),
+                    "small_net_inflow": safe_float(row["小单净流入-净额"]),
+                    "change_percent": safe_float(row["涨跌幅"]),
+                    "close": safe_float(row["收盘价"]),
+                }
+            )
+        return {
+            "status": "ok",
+            "latest": {
+                "date": str(latest["日期"]),
+                "main_net_inflow": safe_float(latest["主力净流入-净额"]),
+                "main_net_ratio": safe_float(latest["主力净流入-净占比"]),
+                "super_net_inflow": safe_float(latest["超大单净流入-净额"]),
+                "large_net_inflow": safe_float(latest["大单净流入-净额"]),
+                "medium_net_inflow": safe_float(latest["中单净流入-净额"]),
+                "small_net_inflow": safe_float(latest["小单净流入-净额"]),
+            },
+            "series": series,
+            "source": "akshare.stock_individual_fund_flow",
+        }
+    except Exception as exc:
+        errors.append(f"individual fund flow failed: {exc}")
+
+    try:
+        rank_df = ak.stock_main_fund_flow(symbol="沪深A股")
+        matched = rank_df[rank_df["代码"].astype(str) == code]
+        if matched.empty:
+            raise ValueError("No main-fund-flow ranking entry for this code.")
+        row = matched.iloc[0]
+        return {
+            "status": "fallback_rank",
+            "latest": {
+                "date": datetime.now().strftime("%Y-%m-%d"),
+                "main_net_inflow": None,
+                "main_net_ratio": safe_float(row["今日排行榜-主力净占比"]),
+                "super_net_inflow": None,
+                "large_net_inflow": None,
+                "medium_net_inflow": None,
+                "small_net_inflow": None,
+            },
+            "ranking": {
+                "today_rank": safe_float(row["今日排行榜-今日排名"]),
+                "today_change": safe_float(row["今日排行榜-今日涨跌"]),
+                "five_day_main_ratio": safe_float(row["5日排行榜-主力净占比"]),
+                "five_day_rank": safe_float(row["5日排行榜-5日排名"]),
+                "ten_day_main_ratio": safe_float(row["10日排行榜-主力净占比"]),
+                "ten_day_rank": safe_float(row["10日排行榜-10日排名"]),
+                "sector": str(row["所属板块"]),
+            },
+            "series": [],
+            "source": "akshare.stock_main_fund_flow",
+        }
+    except Exception as exc:
+        errors.append(f"main fund flow failed: {exc}")
+
+    return {
+        "status": "error",
+        "detail": " | ".join(errors) if errors else "No fund-flow data available.",
+        "series": [],
+        "latest": {},
+    }
+
+
+def generate_assistant_reply(code: str, question: str) -> Dict[str, Any]:
+    snapshot = build_snapshot(code, include_llm=False)
+    client = get_openai_client()
+    if client is None:
+        return {
+            "status": "error",
+            "content": "LLM is not configured.",
+            "snapshot": snapshot,
+        }
+
+    try:
+        response = client.chat.completions.create(
+            model=DEFAULT_LLM_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an A-share stock research assistant. "
+                        "Answer follow-up questions using the supplied stock snapshot. "
+                        "Be concise, factual, and practical. Do not promise profits."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": json.dumps(
+                        {
+                            "stock_snapshot": {
+                                "code": snapshot["code"],
+                                "name": snapshot["name"],
+                                "realtime": snapshot["realtime"],
+                                "indicators": snapshot["indicators"],
+                                "scorecard": snapshot["scorecard"],
+                                "risk_assessment": snapshot["risk_assessment"],
+                                "final_decision": snapshot["final_decision"],
+                                "analysis": snapshot["analysis"],
+                            },
+                            "follow_up_question": question,
+                        },
+                        ensure_ascii=False,
+                    ),
+                },
+            ],
+            temperature=0.2,
+        )
+        text = ""
+        if response.choices and response.choices[0].message:
+            text = (response.choices[0].message.content or "").strip()
+        return {
+            "status": "ok",
+            "content": text,
+            "snapshot": snapshot,
+        }
+    except Exception as exc:
+        return {
+            "status": "error",
+            "content": str(exc),
+            "snapshot": snapshot,
+        }
 
 
 def get_stock_universe() -> pd.DataFrame:
@@ -1396,6 +1619,69 @@ def get_stock(
 ) -> Dict[str, Any]:
     try:
         return build_snapshot(code, include_llm=use_llm)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {exc}") from exc
+
+
+@app.get("/chart/multiperiod")
+def get_multiperiod_chart(
+    code: str = Query(..., min_length=6, max_length=6, pattern=r"^\d{6}$"),
+    period: str = Query("daily", pattern=r"^(daily|60|15)$"),
+) -> Dict[str, Any]:
+    try:
+        if period == "daily":
+            history_df, source = fetch_stock_history(code)
+            chart = build_chart_payload(history_df)
+        else:
+            history_df = fetch_multiperiod_history_from_em(code, period=period)
+            source = f"akshare.stock_zh_a_hist_min_em.{period}"
+            chart = build_multiperiod_chart_payload(history_df, period=period)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {exc}") from exc
+
+    return {
+        "code": code,
+        "period": period,
+        "chart": chart,
+        "meta": {
+            "source": source,
+            "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        },
+    }
+
+
+@app.get("/fund-flow/stock")
+def get_stock_fund_flow_endpoint(
+    code: str = Query(..., min_length=6, max_length=6, pattern=r"^\d{6}$"),
+) -> Dict[str, Any]:
+    try:
+        payload = fetch_stock_fund_flow(code)
+        return {
+            "code": code,
+            **payload,
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {exc}") from exc
+
+
+@app.get("/assistant/chat")
+def assistant_chat(
+    code: str = Query(..., min_length=6, max_length=6, pattern=r"^\d{6}$"),
+    question: str = Query(..., min_length=2),
+) -> Dict[str, Any]:
+    try:
+        payload = generate_assistant_reply(code, question)
+        return {
+            "code": code,
+            "question": question,
+            **payload,
+        }
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:

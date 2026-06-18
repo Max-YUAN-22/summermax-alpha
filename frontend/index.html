@@ -94,6 +94,31 @@
         gap: 10px;
       }
 
+      .page-nav {
+        display: inline-flex;
+        gap: 8px;
+        padding: 4px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .page-nav a {
+        min-width: 92px;
+        padding: 8px 14px;
+        border-radius: 999px;
+        text-decoration: none;
+        text-align: center;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      .page-nav a.active {
+        background: rgba(102, 209, 255, 0.14);
+        color: var(--text);
+        font-weight: 700;
+      }
+
       .lang-switch {
         display: inline-flex;
         gap: 4px;
@@ -463,6 +488,40 @@
         font-size: 0.82rem;
       }
 
+      .chart-toolbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 10px;
+      }
+
+      .segmented {
+        display: inline-flex;
+        gap: 6px;
+        padding: 4px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .segmented button {
+        border: none;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+        font-size: 0.82rem;
+      }
+
+      .segmented button.active {
+        background: linear-gradient(135deg, rgba(102, 209, 255, 0.22), rgba(47, 140, 255, 0.18));
+        color: var(--text);
+        font-weight: 700;
+      }
+
       .legend-item {
         display: inline-flex;
         align-items: center;
@@ -610,6 +669,50 @@
 
       .signal-list li + li {
         margin-top: 7px;
+      }
+
+      .assistant-box {
+        display: grid;
+        gap: 12px;
+      }
+
+      .assistant-log {
+        min-height: 220px;
+        max-height: 380px;
+        overflow: auto;
+        padding: 16px;
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .assistant-msg + .assistant-msg {
+        margin-top: 14px;
+      }
+
+      .assistant-role {
+        display: block;
+        margin-bottom: 6px;
+        color: var(--muted);
+        font-size: 0.78rem;
+        letter-spacing: 0.04em;
+      }
+
+      .assistant-content {
+        margin: 0;
+        line-height: 1.68;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .assistant-input {
+        display: grid;
+        gap: 10px;
+      }
+
+      .assistant-input textarea {
+        min-height: 100px;
+        resize: vertical;
       }
 
       .quicklists-grid {
@@ -791,6 +894,10 @@
           </div>
         </div>
         <div class="topbar-actions">
+          <nav class="page-nav" aria-label="Page Navigation">
+            <a href="/" class="active" data-i18n="navWorkspace">工作台</a>
+            <a href="/app/debug.html" data-i18n="navDebug">调试台</a>
+          </nav>
           <div class="lang-switch" aria-label="Language Switch">
             <button id="langZh" class="active" type="button">中文</button>
             <button id="langEn" type="button">EN</button>
@@ -957,10 +1064,17 @@
                 </div>
               </div>
               <div class="panel-body chart-stage">
-                <div class="chart-legend">
-                  <span class="legend-item"><span class="legend-dot" style="background:#7bd8ff"></span><span data-i18n="legendClose">收盘价</span></span>
-                  <span class="legend-item"><span class="legend-dot" style="background:#35d39a"></span><span data-i18n="legendMa5">MA5</span></span>
-                  <span class="legend-item"><span class="legend-dot" style="background:#f3b14b"></span><span data-i18n="legendMa20">MA20</span></span>
+                <div class="chart-toolbar">
+                  <div class="chart-legend">
+                    <span class="legend-item"><span class="legend-dot" style="background:#7bd8ff"></span><span data-i18n="legendClose">收盘价</span></span>
+                    <span class="legend-item"><span class="legend-dot" style="background:#35d39a"></span><span data-i18n="legendMa5">MA5</span></span>
+                    <span class="legend-item"><span class="legend-dot" style="background:#f3b14b"></span><span data-i18n="legendMa20">MA20</span></span>
+                  </div>
+                  <div class="segmented" aria-label="Chart Period Switch">
+                    <button id="periodDaily" class="active" type="button" data-period="daily" data-i18n="periodDaily">日线</button>
+                    <button id="period60" type="button" data-period="60" data-i18n="period60">60 分钟</button>
+                    <button id="period15" type="button" data-period="15" data-i18n="period15">15 分钟</button>
+                  </div>
                 </div>
                 <div class="chart-wrap">
                   <svg id="priceChart" class="chart-svg" viewBox="0 0 860 470" preserveAspectRatio="none"></svg>
@@ -1016,6 +1130,20 @@
             <article class="panel col-4">
               <div class="panel-head">
                 <div>
+                  <h3 data-i18n="fundFlowTitle">资金流与主力净流入</h3>
+                  <p data-i18n="fundFlowText">看主力、超大单、大单资金方向，避免只看价格不看资金。</p>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div id="fundFlowMetrics" class="metric-grid"></div>
+                <div class="section-divider"></div>
+                <ul id="fundFlowSignals" class="signal-list"></ul>
+              </div>
+            </article>
+
+            <article class="panel col-4">
+              <div class="panel-head">
+                <div>
                   <h3 data-i18n="quoteTitle">实时行情</h3>
                   <p data-i18n="quoteText">实时价格、涨跌、开高低与成交额。</p>
                 </div>
@@ -1048,6 +1176,22 @@
                 <p id="analysisOutput" class="text-box" data-i18n-fallback="noAnalysis">No analysis yet.</p>
                 <div class="section-divider"></div>
                 <ul id="signalsOutput" class="signal-list"></ul>
+              </div>
+            </article>
+
+            <article class="panel col-12">
+              <div class="panel-head">
+                <div>
+                  <h2 data-i18n="assistantTitle">AI 助手追问</h2>
+                  <p data-i18n="assistantText">围绕当前股票继续追问，不需要每次重新组织上下文。</p>
+                </div>
+              </div>
+              <div class="panel-body assistant-box">
+                <div id="assistantLog" class="assistant-log"></div>
+                <div class="assistant-input">
+                  <textarea id="assistantQuestion" placeholder="例如：这个位置是回调买点还是该继续观望？"></textarea>
+                  <button id="assistantAskBtn" class="btn-secondary" type="button" data-i18n="assistantAskBtn">继续追问</button>
+                </div>
               </div>
             </article>
 

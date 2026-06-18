@@ -66,6 +66,31 @@
         align-items: center;
       }
 
+      .page-nav {
+        display: inline-flex;
+        gap: 8px;
+        padding: 4px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .page-nav a {
+        min-width: 92px;
+        padding: 8px 14px;
+        border-radius: 999px;
+        text-decoration: none;
+        text-align: center;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      .page-nav a.active {
+        background: rgba(102, 209, 255, 0.14);
+        color: var(--text);
+        font-weight: 700;
+      }
+
       .lang-switch {
         display: inline-flex;
         gap: 4px;
@@ -249,11 +274,14 @@
           <p id="debugSubtitle">原始 JSON、Waizao 数据和接口调试放到单独页面，不干扰主工作台。</p>
         </div>
         <div class="top-actions">
+          <nav class="page-nav" aria-label="Page Navigation">
+            <a href="/">工作台</a>
+            <a href="/app/debug.html" class="active">调试台</a>
+          </nav>
           <div class="lang-switch" aria-label="Language Switch">
             <button id="langZh" class="active" type="button">中文</button>
             <button id="langEn" type="button">EN</button>
           </div>
-          <a class="nav-link" href="/">返回主页面</a>
         </div>
       </header>
 
