@@ -35,6 +35,11 @@ const fundFlowSignalsEl = document.getElementById("fundFlowSignals");
 const assistantLogEl = document.getElementById("assistantLog");
 const assistantQuestionEl = document.getElementById("assistantQuestion");
 const assistantAskBtn = document.getElementById("assistantAskBtn");
+const addWatchBtn = document.getElementById("addWatchBtn");
+const refreshWatchlistBtn = document.getElementById("refreshWatchlistBtn");
+const toggleWatchlistAutoBtn = document.getElementById("toggleWatchlistAutoBtn");
+const watchlistGridEl = document.getElementById("watchlistGrid");
+const watchlistMetaEl = document.getElementById("watchlistMeta");
 
 const I18N = {
   zh: {
@@ -59,6 +64,7 @@ const I18N = {
     gptToggleTitle: "启用 GPT 5.5 分析",
     gptToggleText: "需要后端已配置 OpenAI API Key。",
     analyzeBtn: "开始分析",
+    addWatchBtn: "加入关注列表",
     openDebugBtn: "查看原始 JSON",
     setupTitle: "为什么现在可能还不能跑？",
     setupText: "这个前端只是工作台。真正抓行情、算指标、调用 GPT 的地方在后端 API。你需要先部署或启动后端。",
@@ -95,6 +101,20 @@ const I18N = {
     periodDaily: "日线",
     period60: "60 分钟",
     period15: "15 分钟",
+    watchlistTitle: "关注股票监控",
+    watchlistText: "对你关注的股票做批量刷新和实时跟踪，点卡片即可切换到单股分析。",
+    watchlistRefreshBtn: "刷新关注列表",
+    watchlistAutoBtn: "开启自动刷新",
+    watchlistAutoStopBtn: "关闭自动刷新",
+    watchlistEmpty: "还没有关注股票。先分析一只股票，再点“加入关注列表”。",
+    watchlistTracked: "已关注",
+    watchlistRefreshing: "关注列表刷新中...",
+    watchlistRemoved: "移除",
+    watchPrice: "现价",
+    watchChange: "涨跌",
+    watchScore: "评分",
+    watchBias: "偏向",
+    watchRisk: "风险",
     quicklistsTitle: "市场快速选股",
     quicklistsText: "不需要先记代码。直接从强势、弱势、活跃和大市值列表里点选开始分析。",
     quicklistGainers: "涨幅榜",
@@ -193,6 +213,7 @@ const I18N = {
     gptToggleTitle: "Enable GPT 5.5 Analysis",
     gptToggleText: "Requires the backend to already have an OpenAI API key configured.",
     analyzeBtn: "Run Analysis",
+    addWatchBtn: "Add To Watchlist",
     openDebugBtn: "Open Raw JSON",
     setupTitle: "Why may it still not run?",
     setupText: "This page is only the workstation. Quote fetching, indicator calculation, and GPT calls all happen in the backend API. You need to deploy or start the backend first.",
@@ -229,6 +250,20 @@ const I18N = {
     periodDaily: "Daily",
     period60: "60 Min",
     period15: "15 Min",
+    watchlistTitle: "Watchlist Monitor",
+    watchlistText: "Refresh and monitor your tracked stocks in one place. Click any card to jump into single-stock analysis.",
+    watchlistRefreshBtn: "Refresh Watchlist",
+    watchlistAutoBtn: "Enable Auto Refresh",
+    watchlistAutoStopBtn: "Disable Auto Refresh",
+    watchlistEmpty: "No tracked stocks yet. Analyze one stock first, then add it to your watchlist.",
+    watchlistTracked: "Tracked",
+    watchlistRefreshing: "Refreshing watchlist...",
+    watchlistRemoved: "Remove",
+    watchPrice: "Price",
+    watchChange: "Change",
+    watchScore: "Score",
+    watchBias: "Bias",
+    watchRisk: "Risk",
     quicklistsTitle: "Market Quick Picks",
     quicklistsText: "No need to remember stock codes first. Start from gainers, losers, active turnover, or large caps.",
     quicklistGainers: "Top Gainers",
@@ -310,6 +345,8 @@ const I18N = {
 let currentLang = localStorage.getItem("summermax-alpha-lang") || "zh";
 let currentPeriod = localStorage.getItem("summermax-alpha-period") || "daily";
 let currentStockContext = null;
+let watchlistTimer = null;
+let watchlistAutoEnabled = localStorage.getItem("summermax-alpha-watchlist-auto") === "true";
 
 function t(key) {
   return I18N[currentLang][key] || I18N.zh[key] || key;
@@ -343,6 +380,15 @@ function setLanguage(lang) {
   }
   if (assistantAskBtn) {
     assistantAskBtn.textContent = t("assistantAskBtn");
+  }
+  if (addWatchBtn) {
+    addWatchBtn.textContent = t("addWatchBtn");
+  }
+  if (refreshWatchlistBtn) {
+    refreshWatchlistBtn.textContent = t("watchlistRefreshBtn");
+  }
+  if (toggleWatchlistAutoBtn) {
+    toggleWatchlistAutoBtn.textContent = watchlistAutoEnabled ? t("watchlistAutoStopBtn") : t("watchlistAutoBtn");
   }
 }
 
@@ -729,6 +775,110 @@ function renderAssistantLog(items) {
   assistantLogEl.scrollTop = assistantLogEl.scrollHeight;
 }
 
+function getWatchlistCodes() {
+  return JSON.parse(localStorage.getItem("summermax-alpha-watchlist") || "[]");
+}
+
+function saveWatchlistCodes(codes) {
+  localStorage.setItem("summermax-alpha-watchlist", JSON.stringify(codes));
+}
+
+function renderWatchlist(results = []) {
+  if (!watchlistGridEl || !watchlistMetaEl) {
+    return;
+  }
+
+  const codes = getWatchlistCodes();
+  if (!codes.length) {
+    watchlistGridEl.innerHTML = `<div class="inline-note">${t("watchlistEmpty")}</div>`;
+    watchlistMetaEl.textContent = `0 ${t("watchlistTracked")}`;
+    return;
+  }
+
+  const resultMap = new Map(results.map((item) => [item.code, item]));
+  watchlistGridEl.innerHTML = codes.map((code) => {
+    const item = resultMap.get(code);
+    const change = Number(item?.realtime?.change_percent);
+    return `
+      <article class="watch-card" data-watch-code="${code}">
+        <div class="watch-top">
+          <div>
+            <span class="watch-code">${code}</span>
+            <span class="watch-name">${item?.name || "-"}</span>
+          </div>
+          <button type="button" class="watch-remove" data-remove-code="${code}">${t("watchlistRemoved")}</button>
+        </div>
+        <div class="watch-stats">
+          <div class="watch-stat"><span>${t("watchPrice")}</span><strong>${formatNumber(item?.realtime?.price)}</strong></div>
+          <div class="watch-stat"><span>${t("watchChange")}</span><strong class="${Number.isNaN(change) ? "" : change >= 0 ? "up" : "down"}">${item?.realtime?.change_percent != null ? `${formatNumber(item.realtime.change_percent)}%` : "-"}</strong></div>
+          <div class="watch-stat"><span>${t("watchScore")}</span><strong>${item?.scorecard?.total ?? "-"}</strong></div>
+          <div class="watch-stat"><span>${t("watchBias")}</span><strong>${item?.final_decision?.bias || "-"}</strong></div>
+          <div class="watch-stat"><span>${t("watchRisk")}</span><strong>${item?.risk_assessment?.level || "-"}</strong></div>
+          <div class="watch-stat"><span>${t("overviewTimeframe")}</span><strong>${item?.llm_analysis?.summary?.timeframe || "-"}</strong></div>
+        </div>
+      </article>
+    `;
+  }).join("");
+
+  watchlistMetaEl.textContent = `${codes.length} ${t("watchlistTracked")}`;
+}
+
+async function refreshWatchlist() {
+  const apiBase = normalizeApiBase(apiBaseInput.value);
+  const codes = getWatchlistCodes();
+  if (!apiBase || !codes.length) {
+    renderWatchlist([]);
+    return;
+  }
+
+  watchlistMetaEl.textContent = t("watchlistRefreshing");
+  try {
+    const response = await fetch(`${apiBase}/watchlist/analyze?codes=${encodeURIComponent(codes.join(","))}&use_llm=true`);
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.detail || t("unknownError"));
+    }
+    renderWatchlist(Array.isArray(data.results) ? data.results : []);
+  } catch {
+    renderWatchlist([]);
+  }
+}
+
+function syncWatchlistAutoState() {
+  localStorage.setItem("summermax-alpha-watchlist-auto", String(watchlistAutoEnabled));
+  if (toggleWatchlistAutoBtn) {
+    toggleWatchlistAutoBtn.textContent = watchlistAutoEnabled ? t("watchlistAutoStopBtn") : t("watchlistAutoBtn");
+  }
+  if (watchlistTimer) {
+    clearInterval(watchlistTimer);
+    watchlistTimer = null;
+  }
+  if (watchlistAutoEnabled) {
+    watchlistTimer = setInterval(() => {
+      refreshWatchlist();
+    }, 60000);
+  }
+}
+
+function addCurrentStockToWatchlist() {
+  const code = stockCodeInput.value.trim();
+  if (!/^\d{6}$/.test(code)) {
+    setStatus(t("invalidCode"), true);
+    return;
+  }
+  const codes = getWatchlistCodes();
+  if (!codes.includes(code)) {
+    codes.unshift(code);
+    saveWatchlistCodes(codes.slice(0, 30));
+  }
+  refreshWatchlist();
+}
+
+function removeFromWatchlist(code) {
+  saveWatchlistCodes(getWatchlistCodes().filter((item) => item !== code));
+  refreshWatchlist();
+}
+
 function appendAssistantMessage(role, content) {
   const history = JSON.parse(localStorage.getItem("summermax-alpha-assistant-history") || "[]");
   history.push({ role, content });
@@ -963,6 +1113,7 @@ async function analyzeStock() {
     localStorage.setItem("summermax-alpha-assistant-history", JSON.stringify([]));
     renderAssistantLog([]);
     setStatus(`${t("loadedPrefix")} ${stockData.code} ${stockData.name || ""} ${t("at")} ${stockData.realtime.quote_time}.`);
+    refreshWatchlist();
     if (currentPeriod !== "daily") {
       await loadChartPeriod(currentPeriod, code);
     }
@@ -988,6 +1139,12 @@ stockCodeInput.addEventListener("input", searchStocks);
 langZhBtn.addEventListener("click", () => setLanguage("zh"));
 langEnBtn.addEventListener("click", () => setLanguage("en"));
 assistantAskBtn.addEventListener("click", askAssistant);
+addWatchBtn.addEventListener("click", addCurrentStockToWatchlist);
+refreshWatchlistBtn.addEventListener("click", refreshWatchlist);
+toggleWatchlistAutoBtn.addEventListener("click", () => {
+  watchlistAutoEnabled = !watchlistAutoEnabled;
+  syncWatchlistAutoState();
+});
 periodDailyBtn.addEventListener("click", () => loadChartPeriod("daily"));
 period60Btn.addEventListener("click", () => loadChartPeriod("60"));
 period15Btn.addEventListener("click", () => loadChartPeriod("15"));
@@ -1036,6 +1193,22 @@ document.addEventListener("click", (event) => {
   analyzeStock();
 });
 
+document.addEventListener("click", (event) => {
+  const removeButton = event.target.closest("[data-remove-code]");
+  if (removeButton) {
+    removeFromWatchlist(removeButton.dataset.removeCode || "");
+    event.stopPropagation();
+    return;
+  }
+
+  const watchCard = event.target.closest("[data-watch-code]");
+  if (!watchCard) {
+    return;
+  }
+  stockCodeInput.value = watchCard.dataset.watchCode || "";
+  analyzeStock();
+});
+
 setLanguage(currentLang);
 updateSetupNote();
 renderChart({});
@@ -1046,4 +1219,7 @@ renderCloseSignal({}, {}, {});
 renderFundFlow({});
 renderAssistantLog(JSON.parse(localStorage.getItem("summermax-alpha-assistant-history") || "[]"));
 setActivePeriod(currentPeriod);
+syncWatchlistAutoState();
+renderWatchlist([]);
+refreshWatchlist();
 loadMarketQuicklists();

@@ -310,6 +310,110 @@
         gap: 10px;
       }
 
+      .watchlist-toolbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+      }
+
+      .watchlist-actions {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+
+      .watchlist-mini-btn {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.03);
+        color: var(--text);
+        padding: 10px 12px;
+        cursor: pointer;
+        font-size: 0.84rem;
+        font-weight: 700;
+      }
+
+      .watchlist-meta {
+        color: var(--muted);
+        font-size: 0.82rem;
+      }
+
+      .watchlist-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .watch-card {
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.025);
+        padding: 14px;
+        cursor: pointer;
+      }
+
+      .watch-card:hover {
+        border-color: rgba(102, 209, 255, 0.28);
+        background: rgba(102, 209, 255, 0.04);
+      }
+
+      .watch-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: flex-start;
+      }
+
+      .watch-code {
+        display: block;
+        font-weight: 700;
+      }
+
+      .watch-name {
+        display: block;
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 0.82rem;
+      }
+
+      .watch-remove {
+        border: none;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+        font-size: 0.82rem;
+      }
+
+      .watch-stats {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .watch-stat {
+        padding: 10px 12px;
+        border-radius: 14px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.02);
+      }
+
+      .watch-stat span {
+        display: block;
+        color: var(--muted);
+        font-size: 0.76rem;
+      }
+
+      .watch-stat strong {
+        display: block;
+        margin-top: 6px;
+        font-size: 0.95rem;
+      }
+
       .btn-primary:disabled,
       .btn-secondary:disabled {
         opacity: 0.6;
@@ -877,7 +981,8 @@
         .row-2,
         .subgrid,
         .metric-grid,
-        .quicklists-grid {
+        .quicklists-grid,
+        .watchlist-grid {
           grid-template-columns: 1fr;
         }
       }
@@ -969,6 +1074,7 @@
 
               <div class="action-row">
                 <button id="analyzeBtn" class="btn-primary" type="button" data-i18n="analyzeBtn">开始分析</button>
+                <button id="addWatchBtn" class="btn-secondary" type="button" data-i18n="addWatchBtn">加入关注列表</button>
                 <a class="btn-link" href="/app/debug.html" data-i18n="openDebugBtn">查看原始 JSON</a>
               </div>
               <p id="status" class="status"></p>
@@ -1083,6 +1189,25 @@
                   <span id="chartMetaLeft">OHLC + MA5 + MA20 + Volume</span>
                   <span id="chartMetaRight">60 Trading Days</span>
                 </div>
+              </div>
+            </article>
+
+            <article class="panel col-8">
+              <div class="panel-head">
+                <div>
+                  <h2 data-i18n="watchlistTitle">关注股票监控</h2>
+                  <p data-i18n="watchlistText">对你关注的股票做批量刷新和实时跟踪，点卡片即可切换到单股分析。</p>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div class="watchlist-toolbar">
+                  <div class="watchlist-actions">
+                    <button id="refreshWatchlistBtn" class="watchlist-mini-btn" type="button" data-i18n="watchlistRefreshBtn">刷新关注列表</button>
+                    <button id="toggleWatchlistAutoBtn" class="watchlist-mini-btn" type="button" data-i18n="watchlistAutoBtn">开启自动刷新</button>
+                  </div>
+                  <span id="watchlistMeta" class="watchlist-meta">0 tracked</span>
+                </div>
+                <div id="watchlistGrid" class="watchlist-grid"></div>
               </div>
             </article>
 
