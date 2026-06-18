@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SummerMax Alpha Market Scan</title>
+    <style>
+      :root {
+        --bg: #07111f;
+        --panel: rgba(10, 22, 38, 0.88);
+        --line: rgba(132, 157, 189, 0.16);
+        --text: #edf4ff;
+        --muted: #8ea3bd;
+        --shadow: 0 24px 60px rgba(0, 0, 0, 0.34);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--text);
+        font-family: "Avenir Next", "PingFang SC", "Noto Sans SC", sans-serif;
+        background:
+          radial-gradient(circle at top left, rgba(102, 209, 255, 0.12), transparent 24%),
+          linear-gradient(180deg, #07111f 0%, #091726 46%, #06101c 100%);
+      }
+      .shell { width: min(1440px, calc(100% - 28px)); margin: 18px auto 28px; }
+      .topbar {
+        display: flex; justify-content: space-between; gap: 16px; align-items: center;
+        margin-bottom: 16px; padding: 16px 18px; border: 1px solid var(--line);
+        border-radius: 22px; background: linear-gradient(180deg, rgba(18, 34, 57, 0.95), rgba(10, 21, 36, 0.9));
+        box-shadow: var(--shadow);
+      }
+      .brand h1 { margin: 0; font-size: 1.25rem; }
+      .brand p { margin: 6px 0 0; color: var(--muted); }
+      .page-nav {
+        display: inline-flex; gap: 8px; padding: 4px; border: 1px solid var(--line);
+        border-radius: 999px; background: rgba(255, 255, 255, 0.03);
+      }
+      .page-nav a {
+        min-width: 92px; padding: 8px 14px; border-radius: 999px; text-decoration: none;
+        text-align: center; color: var(--muted); font-size: 0.9rem;
+      }
+      .page-nav a.active { background: rgba(102, 209, 255, 0.14); color: var(--text); font-weight: 700; }
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+      .panel {
+        border: 1px solid var(--line); border-radius: 24px;
+        background: linear-gradient(180deg, var(--panel), rgba(7, 18, 31, 0.92)); box-shadow: var(--shadow);
+      }
+      .panel-head { padding: 18px 20px 0; }
+      .panel-head h2 { margin: 0; font-size: 1rem; }
+      .panel-head p { margin: 6px 0 0; color: var(--muted); line-height: 1.6; }
+      .panel-body { padding: 18px 20px 20px; }
+      .list { display: grid; gap: 10px; }
+      .item {
+        display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center;
+        padding: 12px 14px; border-radius: 16px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.03);
+      }
+      .item strong, .item span { display: block; }
+      .item span { margin-top: 4px; color: var(--muted); font-size: 0.82rem; }
+      .item em { font-style: normal; color: var(--muted); font-size: 0.82rem; }
+      @media (max-width: 1100px) { .grid { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <h1>Market Scan</h1>
+          <p>市场扫描页先给出清晰骨架，后续继续接更强的市场榜单、行业、公告和异动流。</p>
+        </div>
+        <nav class="page-nav" aria-label="Page Navigation">
+          <a href="/">首页</a>
+          <a href="/workspace">工作台</a>
+          <a href="/scan" class="active">市场扫描</a>
+          <a href="/debug">调试台</a>
+        </nav>
+      </header>
+
+      <section class="grid">
+        <article class="panel">
+          <div class="panel-head">
+            <h2>扫描逻辑</h2>
+            <p>这个页面用于承接批量选股、行业热度、主力偏好和市场事件，不再把这些功能塞进单股工作台。</p>
+          </div>
+          <div class="panel-body list">
+            <div class="item"><div><strong>强势榜扫描</strong><span>涨幅、成交活跃、趋势延续</span></div><em>下一步增强</em></div>
+            <div class="item"><div><strong>资金流扫描</strong><span>主力净流入、5日偏好、10日偏好</span></div><em>下一步增强</em></div>
+            <div class="item"><div><strong>事件扫描</strong><span>公告、异动、研报、热点题材</span></div><em>下一步增强</em></div>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <h2>和工作台的关系</h2>
+            <p>扫描页负责发现机会，工作台负责深入分析，调试台负责核对数据和接口。</p>
+          </div>
+          <div class="panel-body list">
+            <div class="item"><div><strong>Step 1</strong><span>先在扫描页看市场和候选股票</span></div><em>发现机会</em></div>
+            <div class="item"><div><strong>Step 2</strong><span>点击进入工作台做K线、资金流和AI分析</span></div><em>深度判断</em></div>
+            <div class="item"><div><strong>Step 3</strong><span>加入关注列表，持续监控与追问</span></div><em>跟踪执行</em></div>
+          </div>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>

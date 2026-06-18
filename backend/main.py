@@ -1585,6 +1585,14 @@ def health() -> Dict[str, Any]:
 
 @app.get("/")
 def frontend_index() -> FileResponse:
+    home_path = os.path.join(FRONTEND_DIR, "home.html")
+    if not os.path.exists(home_path):
+        raise HTTPException(status_code=404, detail="Frontend home.html not found.")
+    return FileResponse(home_path)
+
+
+@app.get("/workspace")
+def frontend_workspace() -> FileResponse:
     index_path = os.path.join(FRONTEND_DIR, "index.html")
     if not os.path.exists(index_path):
         raise HTTPException(status_code=404, detail="Frontend index.html not found.")
@@ -1597,6 +1605,14 @@ def frontend_debug() -> FileResponse:
     if not os.path.exists(debug_path):
         raise HTTPException(status_code=404, detail="Frontend debug.html not found.")
     return FileResponse(debug_path)
+
+
+@app.get("/scan")
+def frontend_scan() -> FileResponse:
+    scan_path = os.path.join(FRONTEND_DIR, "scan.html")
+    if not os.path.exists(scan_path):
+        raise HTTPException(status_code=404, detail="Frontend scan.html not found.")
+    return FileResponse(scan_path)
 
 
 @app.get("/quote/realtime")

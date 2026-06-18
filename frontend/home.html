@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SummerMax Alpha Platform</title>
+    <style>
+      :root {
+        --bg: #07111f;
+        --panel: rgba(10, 22, 38, 0.88);
+        --line: rgba(132, 157, 189, 0.16);
+        --text: #edf4ff;
+        --muted: #8ea3bd;
+        --accent: #66d1ff;
+        --accent-2: #24a387;
+        --shadow: 0 24px 60px rgba(0, 0, 0, 0.34);
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--text);
+        font-family: "Avenir Next", "PingFang SC", "Noto Sans SC", sans-serif;
+        background:
+          radial-gradient(circle at top left, rgba(102, 209, 255, 0.12), transparent 24%),
+          radial-gradient(circle at top right, rgba(36, 163, 135, 0.14), transparent 22%),
+          linear-gradient(180deg, #07111f 0%, #091726 46%, #06101c 100%);
+      }
+
+      .shell {
+        width: min(1440px, calc(100% - 28px));
+        margin: 18px auto 28px;
+      }
+
+      .topbar {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: center;
+        margin-bottom: 16px;
+        padding: 16px 18px;
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        background: linear-gradient(180deg, rgba(18, 34, 57, 0.95), rgba(10, 21, 36, 0.9));
+        box-shadow: var(--shadow);
+      }
+
+      .brand h1 { margin: 0; font-size: 1.25rem; }
+      .brand p { margin: 6px 0 0; color: var(--muted); }
+
+      .topbar-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .page-nav {
+        display: inline-flex;
+        gap: 8px;
+        padding: 4px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .page-nav a {
+        min-width: 92px;
+        padding: 8px 14px;
+        border-radius: 999px;
+        text-decoration: none;
+        text-align: center;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      .page-nav a.active {
+        background: rgba(102, 209, 255, 0.14);
+        color: var(--text);
+        font-weight: 700;
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: 1.15fr 0.85fr;
+        gap: 16px;
+        margin-top: 18px;
+      }
+
+      .panel {
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        background: linear-gradient(180deg, var(--panel), rgba(7, 18, 31, 0.92));
+        box-shadow: var(--shadow);
+      }
+
+      .hero-main {
+        padding: 28px;
+      }
+
+      .hero-main h2 {
+        margin: 0;
+        font-size: clamp(2.1rem, 4vw, 3.6rem);
+        line-height: 0.95;
+        letter-spacing: -0.05em;
+      }
+
+      .hero-main p {
+        max-width: 720px;
+        margin: 14px 0 0;
+        color: var(--muted);
+        line-height: 1.7;
+      }
+
+      .hero-actions {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-top: 22px;
+      }
+
+      .hero-actions a {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 180px;
+        padding: 14px 18px;
+        border-radius: 16px;
+        text-decoration: none;
+        font-weight: 700;
+      }
+
+      .hero-actions .primary {
+        background: linear-gradient(135deg, var(--accent), #2c8cff);
+        color: #06111d;
+      }
+
+      .hero-actions .secondary {
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.03);
+        color: var(--text);
+      }
+
+      .hero-side {
+        display: grid;
+        gap: 12px;
+        padding: 20px;
+      }
+
+      .metric {
+        padding: 16px;
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .metric span {
+        display: block;
+        color: var(--muted);
+        font-size: 0.82rem;
+      }
+
+      .metric strong {
+        display: block;
+        margin-top: 8px;
+        font-size: 1.2rem;
+      }
+
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
+        margin-top: 16px;
+      }
+
+      .card {
+        padding: 22px;
+      }
+
+      .card h3 {
+        margin: 0;
+        font-size: 1rem;
+      }
+
+      .card p {
+        margin: 10px 0 0;
+        color: var(--muted);
+        line-height: 1.65;
+      }
+
+      @media (max-width: 1100px) {
+        .hero,
+        .cards {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <h1>SummerMax Alpha Platform</h1>
+          <p>面向 A 股研究、监控与 GPT 分析的专业投研工作台。</p>
+        </div>
+        <div class="topbar-actions">
+          <nav class="page-nav" aria-label="Page Navigation">
+            <a href="/" class="active">首页</a>
+            <a href="/workspace">工作台</a>
+            <a href="/scan">市场扫描</a>
+            <a href="/debug">调试台</a>
+          </nav>
+        </div>
+      </header>
+
+      <section class="hero">
+        <section class="panel hero-main">
+          <h2>一个更像平台的股票分析入口。</h2>
+          <p>
+            不再把所有功能堆在同一页。首页负责理解产品入口，工作台负责单股分析，市场扫描页负责批量发现机会，调试台负责原始数据与接口核对。
+          </p>
+          <div class="hero-actions">
+            <a class="primary" href="/workspace">进入分析工作台</a>
+            <a class="secondary" href="/scan">打开市场扫描页</a>
+          </div>
+        </section>
+
+        <section class="panel hero-side">
+          <div class="metric">
+            <span>核心模块</span>
+            <strong>Workspace / Scan / Debug</strong>
+          </div>
+          <div class="metric">
+            <span>图表能力</span>
+            <strong>K线 + 多周期 + 成交量</strong>
+          </div>
+          <div class="metric">
+            <span>AI 能力</span>
+            <strong>结构化分析 + 继续追问</strong>
+          </div>
+        </section>
+      </section>
+
+      <section class="cards">
+        <article class="panel card">
+          <h3>工作台</h3>
+          <p>聚焦单只股票的行情、K 线、资金流、规则分析、GPT 解读和关注列表监控。</p>
+        </article>
+        <article class="panel card">
+          <h3>市场扫描</h3>
+          <p>面向批量发现机会，适合看强势股、活跃成交、主力偏好和后续市场筛选。</p>
+        </article>
+        <article class="panel card">
+          <h3>调试台</h3>
+          <p>单独查看原始 JSON、Waizao 数据和接口返回，不再干扰主工作流。</p>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>
