@@ -1591,6 +1591,14 @@ def frontend_index() -> FileResponse:
     return FileResponse(index_path)
 
 
+@app.get("/debug")
+def frontend_debug() -> FileResponse:
+    debug_path = os.path.join(FRONTEND_DIR, "debug.html")
+    if not os.path.exists(debug_path):
+        raise HTTPException(status_code=404, detail="Frontend debug.html not found.")
+    return FileResponse(debug_path)
+
+
 @app.get("/quote/realtime")
 def get_realtime(code: str = Query(..., min_length=6, max_length=6, pattern=r"^\d{6}$")) -> Dict[str, Any]:
     try:

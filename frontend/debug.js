@@ -1,4 +1,6 @@
-const DEFAULT_API_BASE = "https://summermax-alpha-api.onrender.com";
+const DEFAULT_API_BASE = window.location.origin.startsWith("http")
+  ? window.location.origin
+  : "https://summermax-alpha-api.onrender.com";
 
 const debugApiBaseInput = document.getElementById("debugApiBase");
 const debugStockCodeInput = document.getElementById("debugStockCode");
@@ -95,7 +97,6 @@ function setLanguage(lang) {
 
   document.getElementById("debugTitle").textContent = t("debugTitle");
   document.getElementById("debugSubtitle").textContent = t("debugSubtitle");
-  document.querySelector(".nav-link").textContent = t("backHome");
   document.getElementById("jsonCardTitle").textContent = t("jsonCardTitle");
   document.getElementById("jsonCardText").textContent = t("jsonCardText");
   document.getElementById("apiBaseLabel").textContent = t("apiBaseLabel");
