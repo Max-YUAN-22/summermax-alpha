@@ -938,15 +938,32 @@ def get_stock_universe() -> pd.DataFrame:
 
     errors: List[str] = []
 
+    # Primary: lightweight code+name list cached in-process, covers all A-shares (SH/SZ/BJ)
+    try:
+        df = ak.stock_info_a_code_name()
+        if df is None or df.empty:
+            raise ValueError("stock_info_a_code_name returned empty data.")
+        col_map = {}
+        for col in df.columns:
+            if "代码" in col:
+                col_map[col] = "code"
+            elif "简称" in col or "名称" in col:
+                col_map[col] = "name"
+        normalized = df.rename(columns=col_map)[["code", "name"]].copy()
+        normalized["code"] = normalized["code"].astype(str).str.zfill(6)
+        normalized["name"] = normalized["name"].astype(str)
+        STOCK_UNIVERSE_CACHE["data"] = normalized
+        STOCK_UNIVERSE_CACHE["loaded_at"] = datetime.now()
+        return normalized
+    except Exception as exc:
+        errors.append(f"stock_info_a_code_name failed: {exc}")
+
+    # Fallback: full spot data (heavier, may be rate-limited)
     try:
         df = ak.stock_zh_a_spot_em()
         if df is None or df.empty:
             raise ValueError("AKShare returned empty A-share universe.")
-
-        normalized = df.rename(columns={"代码": "code", "名称": "name"}).copy()
-        if not {"code", "name"}.issubset(normalized.columns):
-            raise ValueError("Unexpected stock universe format.")
-
+        normalized = df.rename(columns={"代码": "code", "名称": "name"})[["code", "name"]].copy()
         normalized["code"] = normalized["code"].astype(str)
         normalized["name"] = normalized["name"].astype(str)
         STOCK_UNIVERSE_CACHE["data"] = normalized
@@ -954,20 +971,6 @@ def get_stock_universe() -> pd.DataFrame:
         return normalized
     except Exception as exc:
         errors.append(f"akshare spot_em failed: {exc}")
-
-    try:
-        df = fetch_market_snapshot_from_eastmoney(limit=200)
-        if df is None or df.empty:
-            raise ValueError("Eastmoney market snapshot returned empty data.")
-
-        normalized = df.loc[:, ["code", "name", "最新价", "涨跌幅", "成交额", "换手率", "总市值"]].copy()
-        normalized["code"] = normalized["code"].astype(str)
-        normalized["name"] = normalized["name"].astype(str)
-        STOCK_UNIVERSE_CACHE["data"] = normalized
-        STOCK_UNIVERSE_CACHE["loaded_at"] = datetime.now()
-        return normalized
-    except Exception as exc:
-        errors.append(f"eastmoney snapshot failed: {exc}")
 
     curated = build_curated_focus_dataframe()
     if curated is not None and not curated.empty:

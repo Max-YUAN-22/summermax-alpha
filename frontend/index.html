@@ -438,6 +438,30 @@
         border: 1px solid rgba(102, 209, 255, 0.16);
       }
 
+      .advanced-settings {
+        margin-top: 14px;
+        border-top: 1px solid var(--line);
+        padding-top: 12px;
+      }
+
+      .advanced-settings summary {
+        cursor: pointer;
+        color: var(--muted);
+        font-size: 0.82rem;
+        user-select: none;
+        list-style: none;
+      }
+
+      .advanced-settings summary::-webkit-details-marker { display: none; }
+
+      .advanced-settings summary::before {
+        content: "▸ ";
+      }
+
+      .advanced-settings[open] summary::before {
+        content: "▾ ";
+      }
+
       .help-card strong {
         display: block;
         margin-bottom: 8px;
@@ -1048,72 +1072,47 @@
           <section class="panel">
             <div class="panel-head">
               <div>
-                <h2 data-i18n="controlTitle">控制台</h2>
-                <p data-i18n="controlText">先填后端地址和股票代码，再决定是否启用 GPT 分析。</p>
+                <h2 data-i18n="controlTitle">查股票</h2>
+                <p data-i18n="controlText">输入股票代码或公司名称，支持全部 A 股搜索。</p>
               </div>
             </div>
             <div class="panel-body">
               <div class="field">
-                <label for="stockCode" data-i18n="stockCodeLabel">股票代码</label>
-                <input id="stockCode" type="text" maxlength="6" placeholder="300059" value="300059" />
+                <label for="stockCode" data-i18n="stockCodeLabel">股票代码或名称</label>
+                <input id="stockCode" type="text" maxlength="20" placeholder="例：平安银行 / 000001" value="300059" autocomplete="off" />
                 <div id="stockSearchResults" class="search-results"></div>
-              </div>
-
-              <div class="field">
-                <label for="apiBase" data-i18n="apiBaseLabel">后端 API 地址</label>
-                <input id="apiBase" type="text" placeholder="https://your-api.onrender.com" />
-              </div>
-
-              <div class="field">
-                <label class="toggle" for="useLlm">
-                  <div class="toggle-copy">
-                    <strong data-i18n="gptToggleTitle">启用 GPT 5.5 分析</strong>
-                    <span data-i18n="gptToggleText">需要后端已配置 OpenAI API Key。</span>
-                  </div>
-                  <input id="useLlm" type="checkbox" />
-                </label>
               </div>
 
               <div class="action-row">
                 <button id="analyzeBtn" class="btn-primary" type="button" data-i18n="analyzeBtn">开始分析</button>
-                <button id="addWatchBtn" class="btn-secondary" type="button" data-i18n="addWatchBtn">加入关注列表</button>
-                <a class="btn-link" href="debug.html" data-i18n="openDebugBtn">查看原始 JSON</a>
+                <button id="addWatchBtn" class="btn-secondary" type="button" data-i18n="addWatchBtn">加入关注</button>
               </div>
               <p id="status" class="status"></p>
 
               <div id="setupNote" class="help-card">
-                <strong data-i18n="setupTitle">为什么现在可能还不能跑？</strong>
-                <p data-i18n="setupText">
-                  这个前端只是工作台。真正抓行情、算指标、调用 GPT 的地方在后端 API。你需要先部署或启动后端。
-                </p>
+                <strong data-i18n="setupTitle">无法分析？</strong>
+                <p data-i18n="setupText">后端服务可能正在唤醒（免费版首次访问约需 30 秒），稍候再试即可。</p>
               </div>
-            </div>
-          </section>
 
-          <section class="panel">
-            <div class="panel-head">
-              <div>
-                <h3 data-i18n="apiGuideTitle">GPT API 在哪里设置</h3>
-                <p data-i18n="apiGuideText">不是在这个网页里填，是在后端环境变量里设置。</p>
-              </div>
-            </div>
-            <div class="panel-body api-guide">
-              <div class="api-guide-item">
-                <strong>1. <span data-i18n="apiGuideItem1Title">必填 Key</span></strong>
-                <p><code>OPENAI_API_KEY=你的 key</code></p>
-              </div>
-              <div class="api-guide-item">
-                <strong>2. <span data-i18n="apiGuideItem2Title">模型名称</span></strong>
-                <p><code>OPENAI_MODEL=gpt-5.5</code></p>
-              </div>
-              <div class="api-guide-item">
-                <strong>3. <span data-i18n="apiGuideItem3Title">兼容网关可选</span></strong>
-                <p><code>OPENAI_BASE_URL=https://your-gateway/v1</code></p>
-              </div>
-              <div class="api-guide-item">
-                <strong>4. <span data-i18n="apiGuideItem4Title">本地启动示例</span></strong>
-                <p><code>cd backend && uvicorn main:app --reload --port 8000</code></p>
-              </div>
+              <details class="advanced-settings">
+                <summary data-i18n="advancedLabel">高级设置</summary>
+                <div class="field" style="margin-top:12px">
+                  <label for="apiBase" data-i18n="apiBaseLabel">后端 API 地址</label>
+                  <input id="apiBase" type="text" placeholder="https://your-api.onrender.com" />
+                </div>
+                <div class="field">
+                  <label class="toggle" for="useLlm">
+                    <div class="toggle-copy">
+                      <strong data-i18n="gptToggleTitle">启用 GPT 分析</strong>
+                      <span data-i18n="gptToggleText">需要后端已配置 API Key。</span>
+                    </div>
+                    <input id="useLlm" type="checkbox" />
+                  </label>
+                </div>
+                <div style="margin-top:8px">
+                  <a class="btn-link" href="debug.html" data-i18n="openDebugBtn">查看原始数据</a>
+                </div>
+              </details>
             </div>
           </section>
 
