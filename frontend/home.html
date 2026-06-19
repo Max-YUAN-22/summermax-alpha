@@ -188,9 +188,87 @@
         line-height: 1.65;
       }
 
+      /* ── Market Overview ── */
+      .overview-section {
+        margin-top: 16px;
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 16px;
+        align-items: start;
+      }
+
+      .indices-panel {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .index-card {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 14px 18px;
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        background: rgba(255,255,255,0.03);
+        min-width: 130px;
+      }
+
+      .index-name { font-size: 0.76rem; color: var(--muted); }
+      .index-price { font-size: 1.1rem; }
+      .index-chg { font-size: 0.82rem; font-weight: 600; }
+
+      .sectors-panel {
+        padding: 18px 20px;
+      }
+
+      .sectors-panel h3 {
+        margin: 0 0 12px;
+        font-size: 0.82rem;
+        color: var(--muted);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      .sectors-row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .sector-pill {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 7px 12px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: rgba(255,255,255,0.03);
+        text-decoration: none;
+        color: var(--text);
+        font-size: 0.82rem;
+        transition: background 0.15s;
+      }
+
+      .sector-pill:hover { background: rgba(255,255,255,0.07); }
+      .sector-pill-name { color: var(--text); }
+      .sector-pill-chg { font-weight: 700; }
+      .sector-pill-leader { font-size: 0.72rem; color: var(--muted); }
+
+      .overview-meta {
+        font-size: 0.7rem;
+        color: var(--muted-2, #5a7490);
+        margin-top: 8px;
+      }
+
+      .up { color: #2ed09a; }
+      .down { color: #ff6b7e; }
+
       @media (max-width: 1100px) {
         .hero,
-        .cards {
+        .cards,
+        .overview-section {
           grid-template-columns: 1fr;
         }
       }
@@ -255,6 +333,21 @@
           <p>单独查看原始 JSON、Waizao 数据和接口返回，不再干扰主工作流。</p>
         </article>
       </section>
+
+      <!-- Market Overview -->
+      <section class="overview-section">
+        <div id="homeIndices" class="indices-panel">
+          <div class="index-card"><span class="index-name">加载中…</span></div>
+        </div>
+        <article class="panel sectors-panel">
+          <h3>今日强势板块</h3>
+          <div id="homeSectors" class="sectors-row">
+            <span style="color:var(--muted);font-size:0.8rem">加载中…</span>
+          </div>
+          <p class="overview-meta">更新于 <span id="overviewTime">--</span></p>
+        </article>
+      </section>
     </main>
+    <script src="home.js"></script>
   </body>
 </html>

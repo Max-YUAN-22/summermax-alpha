@@ -3,104 +3,339 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SummerMax Alpha Market Scan</title>
+    <title>SummerMax Alpha · 市场扫描</title>
     <style>
       :root {
         --bg: #07111f;
-        --panel: rgba(10, 22, 38, 0.88);
-        --line: rgba(132, 157, 189, 0.16);
+        --panel: rgba(10, 22, 38, 0.9);
+        --line: rgba(132, 157, 189, 0.15);
         --text: #edf4ff;
         --muted: #8ea3bd;
-        --shadow: 0 24px 60px rgba(0, 0, 0, 0.34);
+        --muted-2: #5a7490;
+        --accent: #66d1ff;
+        --bull: #2ed09a;
+        --bear: #ff6b7e;
+        --shadow: 0 20px 50px rgba(0, 0, 0, 0.32);
       }
-      * { box-sizing: border-box; }
-      body {
-        margin: 0;
+
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      html, body {
         min-height: 100vh;
         color: var(--text);
-        font-family: "Avenir Next", "PingFang SC", "Noto Sans SC", sans-serif;
-        background:
-          radial-gradient(circle at top left, rgba(102, 209, 255, 0.12), transparent 24%),
-          linear-gradient(180deg, #07111f 0%, #091726 46%, #06101c 100%);
+        font-family: "PingFang SC", "Noto Sans SC", "Avenir Next", sans-serif;
+        font-size: 13px;
+        background: #07111f;
       }
-      .shell { width: min(1440px, calc(100% - 28px)); margin: 18px auto 28px; }
+
+      ::-webkit-scrollbar { width: 4px; height: 4px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: rgba(102,209,255,0.2); border-radius: 2px; }
+
+      .up { color: var(--bull); }
+      .down { color: var(--bear); }
+
+      /* ── Topbar ── */
       .topbar {
-        display: flex; justify-content: space-between; gap: 16px; align-items: center;
-        margin-bottom: 16px; padding: 16px 18px; border: 1px solid var(--line);
-        border-radius: 22px; background: linear-gradient(180deg, rgba(18, 34, 57, 0.95), rgba(10, 21, 36, 0.9));
-        box-shadow: var(--shadow);
+        height: 48px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0 16px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(6, 15, 28, 0.98);
+        position: sticky;
+        top: 0;
+        z-index: 100;
       }
-      .brand h1 { margin: 0; font-size: 1.25rem; }
-      .brand p { margin: 6px 0 0; color: var(--muted); }
-      .page-nav {
-        display: inline-flex; gap: 8px; padding: 4px; border: 1px solid var(--line);
-        border-radius: 999px; background: rgba(255, 255, 255, 0.03);
+
+      .brand-mark {
+        display: grid;
+        place-items: center;
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        background: linear-gradient(135deg, rgba(102,209,255,0.22), rgba(36,163,135,0.28));
+        border: 1px solid rgba(102,209,255,0.2);
+        font-size: 0.78rem;
+        font-weight: 800;
+        flex-shrink: 0;
       }
+
+      .brand-name {
+        font-size: 0.88rem;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      .topbar-divider {
+        width: 1px;
+        height: 20px;
+        background: var(--line);
+        flex-shrink: 0;
+      }
+
+      .page-nav { display: flex; gap: 2px; }
+
       .page-nav a {
-        min-width: 92px; padding: 8px 14px; border-radius: 999px; text-decoration: none;
-        text-align: center; color: var(--muted); font-size: 0.9rem;
+        padding: 5px 10px;
+        border-radius: 8px;
+        text-decoration: none;
+        color: var(--muted);
+        font-size: 0.82rem;
+        transition: background 0.15s, color 0.15s;
       }
-      .page-nav a.active { background: rgba(102, 209, 255, 0.14); color: var(--text); font-weight: 700; }
-      .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-      .panel {
-        border: 1px solid var(--line); border-radius: 24px;
-        background: linear-gradient(180deg, var(--panel), rgba(7, 18, 31, 0.92)); box-shadow: var(--shadow);
+
+      .page-nav a:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+      .page-nav a.active { background: rgba(102,209,255,0.12); color: var(--accent); font-weight: 700; }
+
+      /* ── Layout ── */
+      .shell {
+        display: grid;
+        grid-template-columns: 420px 1fr;
+        height: calc(100vh - 48px);
+        overflow: hidden;
       }
-      .panel-head { padding: 18px 20px 0; }
-      .panel-head h2 { margin: 0; font-size: 1rem; }
-      .panel-head p { margin: 6px 0 0; color: var(--muted); line-height: 1.6; }
-      .panel-body { padding: 18px 20px 20px; }
-      .list { display: grid; gap: 10px; }
-      .item {
-        display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center;
-        padding: 12px 14px; border-radius: 16px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.03);
+
+      /* ── Left: sector list ── */
+      .sector-col {
+        border-right: 1px solid var(--line);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
       }
-      .item strong, .item span { display: block; }
-      .item span { margin-top: 4px; color: var(--muted); font-size: 0.82rem; }
-      .item em { font-style: normal; color: var(--muted); font-size: 0.82rem; }
-      @media (max-width: 1100px) { .grid { grid-template-columns: 1fr; } }
+
+      .col-head {
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-shrink: 0;
+        background: rgba(5,13,26,0.7);
+      }
+
+      .col-head-title {
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted-2);
+      }
+
+      .col-head-meta { font-size: 0.72rem; color: var(--muted-2); }
+
+      .sector-col-head {
+        display: grid;
+        grid-template-columns: 28px 1fr 70px 70px 90px 1fr 20px;
+        gap: 6px;
+        padding: 6px 14px;
+        font-size: 0.68rem;
+        color: var(--muted-2);
+        border-bottom: 1px solid var(--line);
+        letter-spacing: 0.04em;
+        flex-shrink: 0;
+      }
+
+      #sectorList {
+        flex: 1;
+        overflow-y: auto;
+      }
+
+      .sector-row {
+        display: grid;
+        grid-template-columns: 28px 1fr 70px 70px 90px 1fr 20px;
+        gap: 6px;
+        align-items: center;
+        padding: 9px 14px;
+        border-bottom: 1px solid rgba(132,157,189,0.07);
+        background: none;
+        border-left: none;
+        border-right: none;
+        border-top: none;
+        color: var(--text);
+        cursor: pointer;
+        text-align: left;
+        font-size: 0.8rem;
+        width: 100%;
+        transition: background 0.1s;
+      }
+
+      .sector-row:hover { background: rgba(102,209,255,0.05); }
+      .sector-row.active { background: rgba(102,209,255,0.10); border-left: 2px solid var(--accent); }
+
+      .sr-rank { color: var(--muted-2); font-size: 0.72rem; text-align: center; }
+      .sr-name { font-weight: 600; }
+      .sr-chg { font-weight: 700; text-align: right; }
+      .sr-amount { color: var(--muted); text-align: right; }
+      .sr-counts { font-size: 0.72rem; }
+      .sr-leader { font-size: 0.72rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .sr-arrow { color: var(--muted-2); text-align: center; }
+
+      #sectorLoading {
+        padding: 20px 14px;
+        color: var(--muted);
+        font-size: 0.8rem;
+      }
+
+      .empty-note {
+        padding: 20px 14px;
+        color: var(--muted-2);
+        font-size: 0.8rem;
+        line-height: 1.6;
+      }
+
+      /* ── Right: stock panel ── */
+      .stock-col {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      #stockPanel {
+        display: none;
+        flex-direction: column;
+        height: 100%;
+      }
+
+      .stock-col-head {
+        display: grid;
+        grid-template-columns: 1fr 80px 80px 80px 70px 70px;
+        gap: 6px;
+        padding: 7px 16px;
+        font-size: 0.68rem;
+        color: var(--muted-2);
+        border-bottom: 1px solid var(--line);
+        letter-spacing: 0.04em;
+        flex-shrink: 0;
+      }
+
+      #stockTable {
+        flex: 1;
+        overflow-y: auto;
+      }
+
+      .stock-row {
+        display: grid;
+        grid-template-columns: 1fr 80px 80px 80px 70px 70px;
+        gap: 6px;
+        align-items: center;
+        padding: 8px 16px;
+        border-bottom: 1px solid rgba(132,157,189,0.07);
+        transition: background 0.1s;
+      }
+
+      .stock-row:hover { background: rgba(102,209,255,0.04); }
+
+      .sr2-id { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+      .sr2-code { font-size: 0.78rem; font-weight: 700; color: var(--accent); }
+      .sr2-name { font-size: 0.72rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .sr2-price { font-size: 0.82rem; font-weight: 600; text-align: right; }
+      .sr2-chg { font-size: 0.82rem; font-weight: 700; text-align: right; }
+      .sr2-amount { font-size: 0.76rem; color: var(--muted); text-align: right; }
+      .sr2-turn { font-size: 0.76rem; color: var(--muted); text-align: right; }
+
+      .btn-analyze-stock {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 4px 10px;
+        border-radius: 8px;
+        background: linear-gradient(135deg, rgba(102,209,255,0.18), rgba(47,140,255,0.14));
+        border: 1px solid rgba(102,209,255,0.2);
+        color: var(--text);
+        text-decoration: none;
+        font-size: 0.74rem;
+        font-weight: 700;
+        transition: background 0.15s;
+        white-space: nowrap;
+      }
+
+      .btn-analyze-stock:hover { background: linear-gradient(135deg, rgba(102,209,255,0.3), rgba(47,140,255,0.24)); }
+
+      #stockLoading {
+        padding: 20px 16px;
+        color: var(--muted);
+        font-size: 0.8rem;
+        display: none;
+      }
+
+      /* Placeholder when no sector selected */
+      .stock-placeholder {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        gap: 12px;
+        color: var(--muted-2);
+      }
+
+      .stock-placeholder-icon { font-size: 2rem; opacity: 0.4; }
+      .stock-placeholder-text { font-size: 0.86rem; line-height: 1.6; text-align: center; max-width: 240px; }
+
+      @media (max-width: 860px) {
+        .shell { grid-template-columns: 1fr; height: auto; overflow: auto; }
+        .sector-col { height: 60vh; }
+        .stock-col { min-height: 40vh; }
+        #stockPanel { display: flex !important; }
+      }
     </style>
   </head>
   <body>
-    <main class="shell">
-      <header class="topbar">
-        <div class="brand">
-          <h1>Market Scan</h1>
-          <p>市场扫描页先给出清晰骨架，后续继续接更强的市场榜单、行业、公告和异动流。</p>
+
+    <header class="topbar">
+      <div class="brand-mark">Sα</div>
+      <span class="brand-name">SummerMax Alpha</span>
+      <div class="topbar-divider"></div>
+      <nav class="page-nav">
+        <a href="home.html">首页</a>
+        <a href="index.html">工作台</a>
+        <a href="scan.html" class="active">扫描</a>
+        <a href="debug.html">调试</a>
+      </nav>
+    </header>
+
+    <div class="shell">
+
+      <!-- Left: sector list -->
+      <div class="sector-col">
+        <div class="col-head">
+          <span class="col-head-title">行业板块</span>
+          <span class="col-head-meta">点击板块查看个股 →</span>
         </div>
-        <nav class="page-nav" aria-label="Page Navigation">
-          <a href="home.html">首页</a>
-          <a href="index.html">工作台</a>
-          <a href="scan.html" class="active">市场扫描</a>
-          <a href="debug.html">调试台</a>
-        </nav>
-      </header>
+        <div class="sector-col-head">
+          <span>#</span>
+          <span>板块名称</span>
+          <span style="text-align:right">涨跌幅</span>
+          <span style="text-align:right">成交额</span>
+          <span>涨↑ / 跌↓</span>
+          <span>领涨股</span>
+          <span></span>
+        </div>
+        <div id="sectorLoading">正在加载板块数据…</div>
+        <div id="sectorList"></div>
+      </div>
 
-      <section class="grid">
-        <article class="panel">
-          <div class="panel-head">
-            <h2>扫描逻辑</h2>
-            <p>这个页面用于承接批量选股、行业热度、主力偏好和市场事件，不再把这些功能塞进单股工作台。</p>
+      <!-- Right: stock list for selected sector -->
+      <div class="stock-col">
+        <div id="stockPanel">
+          <div class="col-head">
+            <span class="col-head-title" id="stockPanelTitle">--</span>
+            <span class="col-head-meta">点击"分析"进入工作台</span>
           </div>
-          <div class="panel-body list">
-            <div class="item"><div><strong>强势榜扫描</strong><span>涨幅、成交活跃、趋势延续</span></div><em>下一步增强</em></div>
-            <div class="item"><div><strong>资金流扫描</strong><span>主力净流入、5日偏好、10日偏好</span></div><em>下一步增强</em></div>
-            <div class="item"><div><strong>事件扫描</strong><span>公告、异动、研报、热点题材</span></div><em>下一步增强</em></div>
-          </div>
-        </article>
+          <div id="stockLoading">加载中…</div>
+          <div id="stockTable"></div>
+        </div>
 
-        <article class="panel">
-          <div class="panel-head">
-            <h2>和工作台的关系</h2>
-            <p>扫描页负责发现机会，工作台负责深入分析，调试台负责核对数据和接口。</p>
-          </div>
-          <div class="panel-body list">
-            <div class="item"><div><strong>Step 1</strong><span>先在扫描页看市场和候选股票</span></div><em>发现机会</em></div>
-            <div class="item"><div><strong>Step 2</strong><span>点击进入工作台做K线、资金流和AI分析</span></div><em>深度判断</em></div>
-            <div class="item"><div><strong>Step 3</strong><span>加入关注列表，持续监控与追问</span></div><em>跟踪执行</em></div>
-          </div>
-        </article>
-      </section>
-    </main>
+        <div class="stock-placeholder" id="stockPlaceholder">
+          <div class="stock-placeholder-icon">←</div>
+          <p class="stock-placeholder-text">选择左侧任意板块<br>即可查看该板块所有个股</p>
+        </div>
+      </div>
+
+    </div>
+
+    <script src="scan.js"></script>
   </body>
 </html>

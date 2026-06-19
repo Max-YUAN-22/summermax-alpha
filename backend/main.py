@@ -1,6 +1,7 @@
 import json
 import os
-from datetime import datetime, timedelta
+import re
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 import akshare as ak
@@ -11,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from openai import OpenAI
+from pydantic import BaseModel
 
 import waizao_client
 
@@ -38,6 +40,7 @@ DEFAULT_LLM_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.5")
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BACKEND_DIR)
 FRONTEND_DIR = os.path.join(PROJECT_ROOT, "frontend")
+SHANGHAI_TZ = timezone(timedelta(hours=8))
 NO_CACHE_HEADERS = {
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
     "Pragma": "no-cache",
@@ -1944,3 +1947,249 @@ def get_waizao_base_info(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Internal server error: {exc}") from exc
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Market Overview, Sector Browser, and Open AI Chat
+# ══════════════════════════════════════════════════════════════════════════════
+
+def fetch_index_quotes_sina() -> List[Dict[str, Any]]:
+    """Real-time quotes for major A-share indices via Sina hq."""
+    index_keys = [
+        {"code": "000001", "name": "上证指数", "key": "s_sh000001"},
+        {"code": "399001", "name": "深证成指", "key": "s_sz399001"},
+        {"code": "399006", "name": "创业板指", "key": "s_sz399006"},
+    ]
+    symbols = ",".join(idx["key"] for idx in index_keys)
+    url = f"http://hq.sinajs.cn/list={symbols}"
+    headers = {**DEFAULT_HEADERS, "Referer": "https://finance.sina.com.cn"}
+    resp = requests.get(url, headers=headers, timeout=8)
+    text = resp.text
+
+    results = []
+    for idx in index_keys:
+        match = re.search(rf'hq_str_{idx["key"]}="([^"]*)"', text)
+        if match:
+            parts = match.group(1).split(",")
+            if len(parts) >= 4:
+                results.append({
+                    "code": idx["code"],
+                    "name": parts[0] or idx["name"],
+                    "price": safe_float(parts[1]),
+                    "change": safe_float(parts[2]),
+                    "change_percent": safe_float(parts[3]),
+                })
+                continue
+        results.append({"code": idx["code"], "name": idx["name"], "price": None, "change_percent": None})
+    return results
+
+
+def fetch_sector_list() -> List[Dict[str, Any]]:
+    """All industry sectors with daily change%, sorted descending."""
+    df = ak.stock_board_industry_name_em()
+    if df is None or df.empty:
+        raise ValueError("stock_board_industry_name_em returned empty data.")
+
+    results = []
+    for _, row in df.iterrows():
+        results.append({
+            "name": str(row.get("板块名称", "")),
+            "change_percent": safe_float(row.get("涨跌幅")),
+            "amount": safe_float(row.get("成交额")),
+            "rise_count": int(row.get("上涨家数", 0)) if pd.notna(row.get("上涨家数")) else 0,
+            "fall_count": int(row.get("下跌家数", 0)) if pd.notna(row.get("下跌家数")) else 0,
+            "leader": str(row.get("领涨股票", "")),
+            "leader_change": safe_float(row.get("领涨股票-涨跌幅")),
+        })
+    results.sort(key=lambda x: (x["change_percent"] is not None, x["change_percent"] or 0), reverse=True)
+    return results
+
+
+def fetch_sector_stocks(sector_name: str) -> List[Dict[str, Any]]:
+    """Stocks within a named industry sector, sorted by daily change% descending."""
+    df = ak.stock_board_industry_cons_em(symbol=sector_name)
+    if df is None or df.empty:
+        raise ValueError(f"No stocks found for sector: {sector_name}")
+
+    results = []
+    for _, row in df.iterrows():
+        code = str(row.get("代码", "")).zfill(6)
+        results.append({
+            "code": code,
+            "name": str(row.get("名称", "")),
+            "price": safe_float(row.get("最新价")),
+            "change_percent": safe_float(row.get("涨跌幅")),
+            "amount": safe_float(row.get("成交额")),
+            "turnover_rate": safe_float(row.get("换手率")),
+        })
+    results.sort(key=lambda x: (x["change_percent"] is not None, x["change_percent"] or 0), reverse=True)
+    return results
+
+
+def extract_stock_mentions(message: str, universe: pd.DataFrame) -> List[Dict[str, str]]:
+    """Find A-share stock names or codes mentioned in message (max 3)."""
+    found: Dict[str, str] = {}
+
+    # 6-digit code matches
+    for code_match in re.findall(r"\b(\d{6})\b", message):
+        row = universe[universe["code"] == code_match]
+        if not row.empty and code_match not in found:
+            found[code_match] = str(row.iloc[0]["name"])
+
+    # Stock name matches (longer names first to avoid short-name false positives)
+    name_code_pairs = sorted(
+        zip(universe["name"].tolist(), universe["code"].tolist()),
+        key=lambda x: len(x[0]),
+        reverse=True,
+    )
+    for name, code in name_code_pairs:
+        if len(found) >= 3:
+            break
+        if len(name) >= 2 and name in message and code not in found:
+            found[code] = name
+
+    return [{"code": code, "name": name} for code, name in found.items()]
+
+
+# ── New endpoints ──────────────────────────────────────────────────────────────
+
+@app.get("/market/overview")
+def get_market_overview() -> Dict[str, Any]:
+    errors: List[str] = []
+    indices: List[Dict[str, Any]] = []
+    hot_sectors: List[Dict[str, Any]] = []
+
+    try:
+        indices = fetch_index_quotes_sina()
+    except Exception as exc:
+        errors.append(f"indices: {exc}")
+
+    try:
+        sectors = fetch_sector_list()
+        hot_sectors = sectors[:5]
+    except Exception as exc:
+        errors.append(f"sectors: {exc}")
+
+    return {
+        "indices": indices,
+        "hot_sectors": hot_sectors,
+        "errors": errors,
+        "generated_at": datetime.now(tz=SHANGHAI_TZ).strftime("%Y-%m-%d %H:%M"),
+    }
+
+
+@app.get("/market/sectors")
+def get_market_sectors() -> Dict[str, Any]:
+    try:
+        sectors = fetch_sector_list()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {exc}") from exc
+
+    return {
+        "sectors": sectors,
+        "count": len(sectors),
+        "generated_at": datetime.now(tz=SHANGHAI_TZ).strftime("%Y-%m-%d %H:%M"),
+    }
+
+
+@app.get("/market/sector/stocks")
+def get_sector_stocks(
+    name: str = Query(..., min_length=1, description="Sector name in Chinese, e.g. 新能源车"),
+) -> Dict[str, Any]:
+    try:
+        stocks = fetch_sector_stocks(name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {exc}") from exc
+
+    return {
+        "sector": name,
+        "stocks": stocks,
+        "count": len(stocks),
+        "generated_at": datetime.now(tz=SHANGHAI_TZ).strftime("%Y-%m-%d %H:%M"),
+    }
+
+
+class ChatPayload(BaseModel):
+    message: str
+    history: List[Dict[str, str]] = []
+
+
+@app.post("/chat")
+def open_chat(payload: ChatPayload) -> Dict[str, Any]:
+    message = payload.message.strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Message cannot be empty.")
+
+    client = get_openai_client()
+    if not client:
+        raise HTTPException(status_code=503, detail="LLM not configured on this server.")
+
+    # Extract stock mentions and fetch real-time data for each
+    stock_contexts: List[Dict[str, Any]] = []
+    try:
+        universe = get_stock_universe()
+        mentions = extract_stock_mentions(message, universe)
+        for m in mentions:
+            ctx: Dict[str, Any] = {"code": m["code"], "name": m["name"]}
+            try:
+                realtime = fetch_realtime_quote(m["code"])
+                ctx.update({
+                    "price": realtime.get("price"),
+                    "change_percent": realtime.get("change_percent"),
+                    "high": realtime.get("high"),
+                    "low": realtime.get("low"),
+                    "amount": realtime.get("amount"),
+                    "turnover_rate": realtime.get("turnover_rate"),
+                    "pe_ratio": realtime.get("pe_ratio"),
+                })
+            except Exception:
+                pass
+            stock_contexts.append(ctx)
+    except Exception:
+        pass
+
+    # Build system prompt
+    now_str = datetime.now(tz=SHANGHAI_TZ).strftime("%Y-%m-%d %H:%M")
+    lines = [
+        f"你是专业的A股投资分析助手，当前时间 {now_str}（北京时间）。",
+        "结合下方实时行情数据给出清晰、有逻辑的分析。不要模糊推辞，直接给出判断依据和建议。",
+        "回答控制在300字以内，结构清晰。所有分析仅供参考，不构成投资建议。",
+    ]
+    if stock_contexts:
+        lines.append("\n【实时行情】")
+        for s in stock_contexts:
+            price_str = str(s["price"]) if s.get("price") is not None else "暂无"
+            chg = s.get("change_percent")
+            chg_str = f"{chg:+.2f}%" if chg is not None else "-"
+            amount = s.get("amount")
+            amount_str = f"{amount / 1e8:.1f}亿" if amount else "-"
+            pe = s.get("pe_ratio")
+            pe_str = f" PE{pe:.1f}" if pe else ""
+            lines.append(f"  {s['name']}（{s['code']}）: 现价{price_str} 今日{chg_str} 成交额{amount_str}{pe_str}")
+
+    system_prompt = "\n".join(lines)
+
+    messages: List[Dict[str, str]] = [{"role": "system", "content": system_prompt}]
+    for h in payload.history[-10:]:
+        if h.get("role") in ("user", "assistant") and h.get("content"):
+            messages.append({"role": h["role"], "content": h["content"]})
+    messages.append({"role": "user", "content": message})
+
+    try:
+        resp = client.chat.completions.create(
+            model=os.getenv("OPENAI_MODEL", DEFAULT_LLM_MODEL),
+            messages=messages,
+            max_tokens=600,
+            temperature=0.7,
+        )
+        reply = resp.choices[0].message.content
+        return {
+            "content": reply,
+            "stocks_fetched": [{"code": s["code"], "name": s["name"]} for s in stock_contexts],
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"LLM error: {exc}") from exc

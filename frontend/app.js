@@ -140,7 +140,7 @@ const I18N = {
     assistantTitle: "AI 助手追问",
     assistantText: "围绕当前股票继续追问，不需要每次重新组织上下文。",
     assistantAskBtn: "继续追问",
-    assistantPlaceholder: "例如：这个位置是回调买点还是该继续观望？",
+    assistantPlaceholder: "直接问：我看好比亚迪，应该买吗？系统会自动抓取实时数据。",
     assistantEmpty: "还没有追问记录。",
     assistantYou: "你",
     assistantModel: "AI 助手",
@@ -289,7 +289,7 @@ const I18N = {
     assistantTitle: "AI Follow-up Assistant",
     assistantText: "Ask follow-up questions about the current stock without rebuilding context every time.",
     assistantAskBtn: "Ask Follow-up",
-    assistantPlaceholder: "For example: Is this a buy-on-pullback area or still a wait-and-see setup?",
+    assistantPlaceholder: "Ask anything: Should I buy BYD now? System auto-fetches real-time data.",
     assistantEmpty: "No follow-up messages yet.",
     assistantYou: "You",
     assistantModel: "AI Assistant",
@@ -905,33 +905,37 @@ async function askAssistant() {
   const code = stockCodeInput.value.trim();
   const apiBase = normalizeApiBase(apiBaseInput.value);
   const question = assistantQuestionEl.value.trim();
-  if (!apiBase || !/^\d{6}$/.test(code) || question.length < 2) {
+  if (!apiBase || question.length < 2) {
     return;
   }
 
+  const history = JSON.parse(localStorage.getItem("summermax-alpha-assistant-history") || "[]");
   appendAssistantMessage("user", question);
   assistantQuestionEl.value = "";
   appendAssistantMessage("assistant", t("assistantLoading"));
   assistantAskBtn.disabled = true;
 
   try {
-    const response = await fetch(`${apiBase}/assistant/chat?code=${encodeURIComponent(code)}&question=${encodeURIComponent(question)}`);
+    const response = await fetch(`${apiBase}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: question,
+        history: history.slice(-10),
+      }),
+    });
     const data = await response.json();
-    const history = JSON.parse(localStorage.getItem("summermax-alpha-assistant-history") || "[]");
-    if (history.length) {
-      history.pop();
-    }
-    history.push({ role: "assistant", content: response.ok ? (data.content || t("unknownError")) : (data.detail || t("unknownError")) });
-    localStorage.setItem("summermax-alpha-assistant-history", JSON.stringify(history));
-    renderAssistantLog(history);
+    const updated = JSON.parse(localStorage.getItem("summermax-alpha-assistant-history") || "[]");
+    if (updated.length) updated.pop();
+    updated.push({ role: "assistant", content: response.ok ? (data.content || t("unknownError")) : (data.detail || t("unknownError")) });
+    localStorage.setItem("summermax-alpha-assistant-history", JSON.stringify(updated));
+    renderAssistantLog(updated);
   } catch {
-    const history = JSON.parse(localStorage.getItem("summermax-alpha-assistant-history") || "[]");
-    if (history.length) {
-      history.pop();
-    }
-    history.push({ role: "assistant", content: t("unknownError") });
-    localStorage.setItem("summermax-alpha-assistant-history", JSON.stringify(history));
-    renderAssistantLog(history);
+    const updated = JSON.parse(localStorage.getItem("summermax-alpha-assistant-history") || "[]");
+    if (updated.length) updated.pop();
+    updated.push({ role: "assistant", content: t("unknownError") });
+    localStorage.setItem("summermax-alpha-assistant-history", JSON.stringify(updated));
+    renderAssistantLog(updated);
   } finally {
     assistantAskBtn.disabled = false;
   }
@@ -1281,3 +1285,10 @@ renderWatchlist([]);
 refreshWatchlist();
 loadMarketQuicklists();
 checkGptStatus();
+
+// Auto-analyze if URL contains ?code=XXXXXX (e.g. linked from scan page)
+const urlCode = new URLSearchParams(location.search).get("code");
+if (urlCode && /^\d{6}$/.test(urlCode)) {
+  stockCodeInput.value = urlCode;
+  analyzeStock();
+}
