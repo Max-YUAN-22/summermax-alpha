@@ -1,6 +1,4 @@
-const DEFAULT_API_BASE = window.location.origin.startsWith("http")
-  ? window.location.origin
-  : "https://summermax-alpha-api.onrender.com";
+const DEFAULT_API_BASE = "https://summermax-alpha-api.onrender.com";
 
 const debugApiBaseInput = document.getElementById("debugApiBase");
 const debugStockCodeInput = document.getElementById("debugStockCode");
