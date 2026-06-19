@@ -185,6 +185,20 @@
         line-height: 1.6;
       }
 
+      .btn-retry {
+        margin-top: 12px;
+        padding: 7px 16px;
+        border-radius: 8px;
+        border: 1px solid rgba(102,209,255,0.22);
+        background: rgba(102,209,255,0.08);
+        color: var(--accent);
+        cursor: pointer;
+        font-size: 0.8rem;
+        font-weight: 700;
+        display: block;
+      }
+      .btn-retry:hover { background: rgba(102,209,255,0.14); }
+
       /* ── Right: stock panel ── */
       .stock-col {
         display: flex;
@@ -289,9 +303,9 @@
       <span class="brand-name">SummerMax Alpha</span>
       <div class="topbar-divider"></div>
       <nav class="page-nav">
-        <a href="home.html">首页</a>
+        <a href="index.html">首页</a>
         <a href="scan.html" class="active">市场扫描</a>
-        <a href="index.html">工作台</a>
+        <a href="workspace.html">工作台</a>
       </nav>
     </header>
 
@@ -312,7 +326,7 @@
           <span>领涨股</span>
           <span></span>
         </div>
-        <div id="sectorLoading">正在加载板块数据…</div>
+        <div id="sectorLoading"><p>正在加载板块数据…</p><p style="margin-top:6px;font-size:0.74rem;color:var(--muted-2)">后端首次访问约需 30 秒唤醒，请耐心等待</p></div>
         <div id="sectorList"></div>
       </div>
 

@@ -116,9 +116,15 @@ async function loadSectors() {
   } catch (err) {
     if (sectorLoadingEl) sectorLoadingEl.style.display = "none";
     const msg = err.name === "AbortError"
-      ? "请求超时。后端正在唤醒中（约需 30 秒），请稍候刷新页面。"
-      : `加载失败：${err.message}。后端可能正在唤醒，稍候刷新。`;
-    if (sectorListEl) sectorListEl.innerHTML = `<div class="empty-note">${msg}</div>`;
+      ? "请求超时，后端正在唤醒中（免费服务首次启动约需 30–60 秒）。"
+      : `加载失败（${err.message}），后端可能正在唤醒中。`;
+    if (sectorListEl) sectorListEl.innerHTML = `
+      <div class="empty-note">
+        <p>${msg}</p>
+        <button type="button" class="btn-retry" id="retrySectorsBtn">重新加载</button>
+      </div>`;
+    const retryBtn = document.getElementById("retrySectorsBtn");
+    if (retryBtn) retryBtn.addEventListener("click", loadSectors);
   }
 }
 
@@ -165,7 +171,7 @@ async function loadSectorStocks(sectorName) {
             <span class="sr2-chg ${cls}">${chgText(s.change_percent)}</span>
             <span class="sr2-amount">${fmtAmount(s.amount)}</span>
             <span class="sr2-turn">${s.turnover_rate != null ? fmt(s.turnover_rate) + "%" : "--"}</span>
-            <a href="index.html?code=${s.code}" class="btn-analyze-stock">分析</a>
+            <a href="workspace.html?code=${s.code}" class="btn-analyze-stock">分析</a>
           </div>
         `;
       }).join("")}

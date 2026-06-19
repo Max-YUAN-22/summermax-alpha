@@ -1,0 +1,1031 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SummerMax Alpha</title>
+    <style>
+      :root {
+        --bg: #07111f;
+        --panel: rgba(10, 22, 38, 0.9);
+        --line: rgba(132, 157, 189, 0.14);
+        --text: #edf4ff;
+        --muted: #8ea3bd;
+        --muted-2: #5a7490;
+        --accent: #66d1ff;
+        --accent-2: #24a387;
+        --warn: #f3b14b;
+        --danger: #ff6c7a;
+        --bull: #2ed09a;
+        --bear: #ff6b7e;
+      }
+
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      html, body {
+        height: 100%;
+        overflow: hidden;
+        color: var(--text);
+        font-family: "PingFang SC", "Noto Sans SC", "Avenir Next", sans-serif;
+        font-size: 13px;
+        background: #07111f;
+      }
+
+      code { font-family: "SF Mono", "Fira Code", monospace; }
+
+      /* ── Scrollbar ── */
+      ::-webkit-scrollbar { width: 4px; height: 4px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: rgba(102,209,255,0.2); border-radius: 2px; }
+
+      /* ══════════════════════════════════════
+         HEADER  48px
+      ══════════════════════════════════════ */
+      .topbar {
+        height: 48px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0 14px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(6, 15, 28, 0.98);
+        flex-shrink: 0;
+        z-index: 100;
+      }
+
+      .brand-mark {
+        display: grid;
+        place-items: center;
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        background: linear-gradient(135deg, rgba(102,209,255,0.22), rgba(36,163,135,0.28));
+        border: 1px solid rgba(102,209,255,0.2);
+        font-size: 0.78rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        flex-shrink: 0;
+      }
+
+      .brand-name {
+        font-size: 0.88rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        color: var(--text);
+        white-space: nowrap;
+      }
+
+      .topbar-divider {
+        width: 1px;
+        height: 20px;
+        background: var(--line);
+        flex-shrink: 0;
+      }
+
+      .page-nav {
+        display: flex;
+        gap: 2px;
+      }
+
+      .page-nav a {
+        padding: 5px 10px;
+        border-radius: 8px;
+        text-decoration: none;
+        color: var(--muted);
+        font-size: 0.82rem;
+        transition: background 0.15s, color 0.15s;
+      }
+
+      .page-nav a:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+      .page-nav a.active { background: rgba(102,209,255,0.12); color: var(--accent); font-weight: 700; }
+
+      .topbar-spacer { flex: 1; }
+
+      .gpt-indicator {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 20px;
+        border: 1px solid var(--line);
+        font-size: 0.76rem;
+        color: var(--muted);
+      }
+
+      .gpt-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--muted-2);
+        flex-shrink: 0;
+      }
+      .gpt-dot.ok { background: var(--bull); box-shadow: 0 0 6px rgba(46,208,154,0.5); }
+      .gpt-dot.err { background: var(--bear); }
+
+      .lang-switch {
+        display: flex;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+
+      .lang-switch button {
+        border: none;
+        background: transparent;
+        color: var(--muted);
+        padding: 4px 10px;
+        cursor: pointer;
+        font-size: 0.78rem;
+        transition: background 0.12s;
+      }
+
+      .lang-switch button.active { background: rgba(102,209,255,0.14); color: var(--text); font-weight: 700; }
+
+      /* ══════════════════════════════════════
+         THREE-COLUMN TERMINAL
+      ══════════════════════════════════════ */
+      .terminal {
+        display: grid;
+        grid-template-columns: 230px 1fr 300px;
+        height: calc(100vh - 48px);
+        overflow: hidden;
+      }
+
+      /* ── Column shared ── */
+      .col { overflow-y: auto; display: flex; flex-direction: column; }
+      .col-left  { border-right: 1px solid var(--line); background: rgba(5,13,26,0.6); }
+      .col-center { background: #07111f; }
+      .col-right { border-left: 1px solid var(--line); background: rgba(5,13,26,0.6); }
+
+      /* ── Section label ── */
+      .sec-label {
+        padding: 8px 12px 4px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted-2);
+        border-bottom: 1px solid var(--line);
+      }
+
+      /* ══════════════════════════════════════
+         LEFT COLUMN
+      ══════════════════════════════════════ */
+
+      /* Search */
+      .search-box {
+        padding: 10px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .search-input-wrap { position: relative; }
+
+      .search-input-wrap input {
+        width: 100%;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        color: var(--text);
+        padding: 9px 12px;
+        font-size: 0.86rem;
+        outline: none;
+        transition: border-color 0.15s;
+      }
+
+      .search-input-wrap input:focus { border-color: rgba(102,209,255,0.35); }
+      .search-input-wrap input::placeholder { color: var(--muted-2); }
+
+      .search-results {
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0; right: 0;
+        background: rgba(9, 20, 37, 0.98);
+        border: 1px solid rgba(102,209,255,0.2);
+        border-radius: 12px;
+        z-index: 200;
+        max-height: 260px;
+        overflow-y: auto;
+        display: none;
+        backdrop-filter: blur(12px);
+      }
+
+      .search-results.show { display: block; }
+
+      .search-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        width: 100%;
+        padding: 8px 12px;
+        background: transparent;
+        border: none;
+        color: var(--text);
+        cursor: pointer;
+        text-align: left;
+        gap: 8px;
+        font-size: 0.82rem;
+        transition: background 0.1s;
+      }
+
+      .search-item:hover { background: rgba(102,209,255,0.08); }
+      .search-code { font-weight: 700; color: var(--accent); font-size: 0.76rem; }
+      .search-name { color: var(--muted); }
+
+      .analyze-row {
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
+      }
+
+      .btn-analyze {
+        flex: 1;
+        border: none;
+        border-radius: 10px;
+        background: linear-gradient(135deg, rgba(102,209,255,0.22), rgba(47,140,255,0.18));
+        color: var(--text);
+        font-weight: 700;
+        padding: 9px;
+        cursor: pointer;
+        font-size: 0.84rem;
+        border: 1px solid rgba(102,209,255,0.2);
+        transition: background 0.15s;
+      }
+
+      .btn-analyze:hover { background: linear-gradient(135deg, rgba(102,209,255,0.32), rgba(47,140,255,0.28)); }
+      .btn-analyze:disabled { opacity: 0.45; cursor: not-allowed; }
+
+      .btn-icon {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: rgba(255,255,255,0.04);
+        color: var(--muted);
+        padding: 9px 11px;
+        cursor: pointer;
+        font-size: 0.9rem;
+        transition: background 0.12s, color 0.12s;
+      }
+
+      .btn-icon:hover { background: rgba(255,255,255,0.08); color: var(--text); }
+
+      #status {
+        margin-top: 8px;
+        font-size: 0.76rem;
+        color: var(--muted);
+        min-height: 1em;
+        line-height: 1.5;
+      }
+
+      #status.error { color: var(--danger); }
+
+      #setupNote {
+        margin-top: 8px;
+        padding: 10px 12px;
+        border-radius: 10px;
+        background: rgba(102,209,255,0.06);
+        border: 1px solid rgba(102,209,255,0.14);
+        font-size: 0.76rem;
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      .advanced-settings {
+        margin-top: 10px;
+        font-size: 0.76rem;
+      }
+
+      .advanced-settings summary {
+        cursor: pointer;
+        color: var(--muted-2);
+        list-style: none;
+        user-select: none;
+        padding: 4px 0;
+      }
+
+      .advanced-settings summary::-webkit-details-marker { display: none; }
+      .advanced-settings summary::before { content: "▸ "; }
+      .advanced-settings[open] summary::before { content: "▾ "; }
+
+      .adv-field {
+        margin-top: 8px;
+      }
+
+      .adv-field label {
+        display: block;
+        color: var(--muted-2);
+        font-size: 0.72rem;
+        margin-bottom: 4px;
+      }
+
+      .adv-field input {
+        width: 100%;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        color: var(--text);
+        padding: 6px 8px;
+        font-size: 0.76rem;
+        outline: none;
+      }
+
+      .toggle-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 8px;
+        padding: 6px 0;
+      }
+
+      .toggle-row span { color: var(--muted); font-size: 0.76rem; }
+
+      .toggle-row input[type="checkbox"] {
+        width: 32px;
+        height: 18px;
+        cursor: pointer;
+        accent-color: var(--accent-2);
+      }
+
+      /* Watchlist */
+      .watch-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .watch-btns { display: flex; gap: 4px; }
+
+      #watchlistMeta {
+        font-size: 0.72rem;
+        color: var(--muted-2);
+      }
+
+      .watch-col-head {
+        display: grid;
+        grid-template-columns: 1fr 52px 52px 20px;
+        gap: 4px;
+        padding: 5px 10px;
+        font-size: 0.7rem;
+        color: var(--muted-2);
+        border-bottom: 1px solid var(--line);
+        letter-spacing: 0.04em;
+      }
+
+      #watchlistGrid { flex: 1; }
+
+      .watch-row {
+        display: grid;
+        grid-template-columns: 1fr 52px 52px 20px;
+        gap: 4px;
+        align-items: center;
+        padding: 7px 10px;
+        border-bottom: 1px solid rgba(132,157,189,0.07);
+        cursor: pointer;
+        transition: background 0.1s;
+      }
+
+      .watch-row:hover { background: rgba(102,209,255,0.05); }
+      .watch-row.active-watch { background: rgba(102,209,255,0.09); }
+
+      .watch-row-id { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+      .watch-row-code { font-size: 0.78rem; font-weight: 700; color: var(--accent); }
+      .watch-row-name { font-size: 0.72rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .watch-row-price { font-size: 0.82rem; font-weight: 600; text-align: right; }
+      .watch-row-chg { font-size: 0.78rem; font-weight: 600; text-align: right; }
+      .watch-row-del { background: none; border: none; color: var(--muted-2); cursor: pointer; font-size: 0.82rem; text-align: center; }
+      .watch-row-del:hover { color: var(--danger); }
+
+      .up { color: var(--bull); }
+      .down { color: var(--bear); }
+
+      .inline-note {
+        padding: 12px 10px;
+        font-size: 0.78rem;
+        color: var(--muted-2);
+        line-height: 1.6;
+      }
+
+      /* Market quicklist tabs */
+      .mkt-tabs {
+        display: flex;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .mkt-tab {
+        flex: 1;
+        border: none;
+        background: transparent;
+        color: var(--muted-2);
+        padding: 7px 4px;
+        cursor: pointer;
+        font-size: 0.72rem;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+        transition: color 0.12s;
+        border-bottom: 2px solid transparent;
+      }
+
+      .mkt-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+      .quick-list { display: none; }
+      .quick-list.show { display: block; }
+
+      .quick-item {
+        display: grid;
+        grid-template-columns: 1fr auto auto;
+        gap: 6px;
+        align-items: center;
+        padding: 6px 10px;
+        border-bottom: 1px solid rgba(132,157,189,0.06);
+        cursor: pointer;
+        background: none;
+        border-left: none;
+        border-right: none;
+        border-top: none;
+        width: 100%;
+        text-align: left;
+        color: var(--text);
+        transition: background 0.1s;
+        font-size: 0.78rem;
+      }
+
+      .quick-item:hover { background: rgba(102,209,255,0.05); }
+
+      .quick-code { font-weight: 700; font-size: 0.72rem; color: var(--accent); display: block; }
+      .quick-name { font-size: 0.72rem; color: var(--muted); display: block; }
+      .quick-price { font-weight: 600; font-size: 0.78rem; }
+      .quick-chg { font-weight: 600; font-size: 0.78rem; }
+
+      /* ══════════════════════════════════════
+         CENTER COLUMN
+      ══════════════════════════════════════ */
+
+      /* Stock titlebar */
+      .stock-bar {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        flex-wrap: wrap;
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(8, 18, 34, 0.8);
+        flex-shrink: 0;
+      }
+
+      .stock-id { display: flex; flex-direction: column; gap: 2px; min-width: 80px; }
+      .stock-code-big { font-size: 0.96rem; font-weight: 800; color: var(--accent); letter-spacing: 0.04em; }
+      .stock-name-big { font-size: 0.76rem; color: var(--muted); }
+
+      .price-cluster { display: flex; align-items: baseline; gap: 10px; }
+      .price-big { font-size: 1.9rem; font-weight: 800; letter-spacing: -0.02em; }
+      .price-change { font-size: 1rem; font-weight: 700; }
+
+      #realtimeMetrics {
+        display: flex;
+        gap: 14px;
+        flex-wrap: wrap;
+        flex: 1;
+      }
+
+      .metric {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .metric-label { font-size: 0.68rem; color: var(--muted-2); letter-spacing: 0.03em; }
+      .metric-value { font-size: 0.82rem; font-weight: 600; }
+
+      /* Decision bar */
+      .decision-bar {
+        display: flex;
+        gap: 0;
+        border-bottom: 1px solid var(--line);
+        background: rgba(6,14,28,0.6);
+        flex-shrink: 0;
+      }
+
+      .dec-cell {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 8px 6px;
+        border-right: 1px solid var(--line);
+        gap: 3px;
+      }
+
+      .dec-cell:last-child { border-right: none; }
+
+      .dec-label {
+        font-size: 0.66rem;
+        color: var(--muted-2);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      .dec-val {
+        font-size: 0.9rem;
+        font-weight: 700;
+      }
+
+      .decision-tag {
+        font-size: 0.78rem;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 6px;
+      }
+
+      .decision-neutral { color: var(--muted); background: rgba(142,163,189,0.12); }
+      .decision-bullish { color: var(--bull); background: rgba(46,208,154,0.12); }
+      .decision-bearish { color: var(--bear); background: rgba(255,107,126,0.12); }
+      .decision-watch   { color: var(--warn); background: rgba(243,177,75,0.12); }
+      .decision-reduce  { color: var(--danger); background: rgba(255,108,122,0.12); }
+
+      /* Chart */
+      .chart-area {
+        padding: 10px 14px 6px;
+        flex-shrink: 0;
+      }
+
+      .chart-toolbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+      }
+
+      .chart-legend { display: flex; gap: 12px; }
+      .legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--muted); }
+      .legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+      .segmented {
+        display: flex;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+
+      .segmented button {
+        border: none;
+        background: transparent;
+        color: var(--muted);
+        padding: 4px 10px;
+        cursor: pointer;
+        font-size: 0.76rem;
+        transition: background 0.12s, color 0.12s;
+      }
+
+      .segmented button.active { background: rgba(102,209,255,0.16); color: var(--text); font-weight: 700; }
+
+      .chart-wrap { position: relative; }
+
+      .chart-svg {
+        width: 100%;
+        height: 340px;
+        display: block;
+      }
+
+      .chart-meta {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.68rem;
+        color: var(--muted-2);
+        padding: 4px 0;
+      }
+
+      /* Signals & indicators */
+      .signals-area {
+        padding: 10px 14px;
+        border-top: 1px solid var(--line);
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 12px;
+      }
+
+      .sig-block { display: flex; flex-direction: column; gap: 6px; }
+
+      .sig-title {
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: var(--muted-2);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      .signal-list {
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .signal-list li {
+        font-size: 0.76rem;
+        color: var(--muted);
+        padding: 3px 0;
+        border-bottom: 1px solid rgba(132,157,189,0.07);
+        line-height: 1.45;
+      }
+
+      .text-box {
+        font-size: 0.78rem;
+        color: var(--muted);
+        line-height: 1.6;
+        white-space: pre-wrap;
+      }
+
+      #indicatorMetrics {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      #indicatorMetrics .metric {
+        flex-direction: row;
+        justify-content: space-between;
+        padding: 3px 0;
+        border-bottom: 1px solid rgba(132,157,189,0.07);
+      }
+
+      #indicatorMetrics .metric-value { font-size: 0.78rem; }
+
+      /* Analysis text */
+      .analysis-area {
+        padding: 0 14px 12px;
+        border-top: 1px solid var(--line);
+      }
+
+      #analysisOutput {
+        font-size: 0.78rem;
+        color: var(--muted);
+        line-height: 1.7;
+        white-space: pre-wrap;
+        max-height: 120px;
+        overflow-y: auto;
+        padding: 8px 0;
+      }
+
+      /* Fund flow — matches sig-block style */
+      .fundflow-area {
+        padding: 10px 14px;
+        border-top: 1px solid var(--line);
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      #fundFlowMetrics {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+      }
+
+      #fundFlowMetrics .metric {
+        flex-direction: row;
+        justify-content: space-between;
+        padding: 4px 0;
+        border-bottom: 1px solid rgba(132,157,189,0.07);
+      }
+
+      #fundFlowSignals { font-size: 0.74rem; color: var(--muted); }
+
+      /* ══════════════════════════════════════
+         RIGHT COLUMN
+      ══════════════════════════════════════ */
+      .col-right { gap: 0; }
+
+      .ai-section {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      #llmOutput {
+        flex: 1;
+        overflow-y: auto;
+        padding: 10px 12px;
+        font-size: 0.8rem;
+        color: var(--muted);
+        line-height: 1.7;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .chat-section {
+        display: flex;
+        flex-direction: column;
+        flex-shrink: 0;
+        max-height: 45%;
+      }
+
+      .assistant-log {
+        flex: 1;
+        overflow-y: auto;
+        padding: 8px 12px;
+        min-height: 60px;
+        max-height: 180px;
+      }
+
+      .assistant-msg + .assistant-msg { margin-top: 10px; }
+
+      .assistant-role {
+        display: block;
+        font-size: 0.68rem;
+        color: var(--muted-2);
+        margin-bottom: 3px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .assistant-content {
+        font-size: 0.78rem;
+        color: var(--muted);
+        line-height: 1.6;
+        white-space: pre-wrap;
+      }
+
+      .chat-input-area {
+        padding: 8px 10px;
+        border-top: 1px solid var(--line);
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .chat-input-area textarea {
+        width: 100%;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        color: var(--text);
+        padding: 7px 10px;
+        font-size: 0.78rem;
+        resize: none;
+        outline: none;
+        min-height: 60px;
+        line-height: 1.5;
+        font-family: inherit;
+        transition: border-color 0.15s;
+      }
+
+      .chat-input-area textarea:focus { border-color: rgba(102,209,255,0.3); }
+      .chat-input-area textarea::placeholder { color: var(--muted-2); }
+
+      .chat-send-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .chat-hint { font-size: 0.68rem; color: var(--muted-2); }
+
+      .btn-send {
+        border: none;
+        border-radius: 8px;
+        background: linear-gradient(135deg, rgba(102,209,255,0.2), rgba(47,140,255,0.16));
+        color: var(--text);
+        font-weight: 700;
+        padding: 6px 14px;
+        cursor: pointer;
+        font-size: 0.78rem;
+        border: 1px solid rgba(102,209,255,0.18);
+        transition: background 0.15s;
+      }
+
+      .btn-send:hover { background: linear-gradient(135deg, rgba(102,209,255,0.3), rgba(47,140,255,0.24)); }
+      .btn-send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+      /* Responsive */
+      @media (max-width: 900px) {
+        .terminal {
+          grid-template-columns: 1fr;
+          height: auto;
+          overflow: auto;
+        }
+        .col { overflow-y: visible; }
+        .col-left, .col-right { border: none; border-bottom: 1px solid var(--line); }
+        html, body { overflow: auto; }
+      }
+    </style>
+  </head>
+  <body>
+
+    <!-- ═══════════ HEADER ═══════════ -->
+    <header class="topbar">
+      <div class="brand-mark">Sα</div>
+      <span class="brand-name">SummerMax Alpha</span>
+      <div class="topbar-divider"></div>
+      <nav class="page-nav">
+        <a href="index.html" data-i18n="navHome">首页</a>
+        <a href="scan.html" data-i18n="navScan">市场扫描</a>
+        <a href="workspace.html" class="active" data-i18n="navWorkspace">工作台</a>
+      </nav>
+      <div class="topbar-spacer"></div>
+      <div class="gpt-indicator">
+        <div id="gptStatusDot" class="gpt-dot"></div>
+        <span id="gptStatusLabel" data-i18n="gptStatusChecking">GPT 检测中…</span>
+      </div>
+      <div class="lang-switch">
+        <button id="langZh" class="active" type="button">中</button>
+        <button id="langEn" type="button">EN</button>
+      </div>
+    </header>
+
+    <!-- ═══════════ THREE COLUMNS ═══════════ -->
+    <div class="terminal">
+
+      <!-- ── LEFT: Search + Watchlist + Market Picks ── -->
+      <aside class="col col-left">
+
+        <!-- Search & Analyze -->
+        <div class="search-box">
+          <div class="search-input-wrap">
+            <input
+              id="stockCode"
+              type="text"
+              maxlength="20"
+              placeholder="股票代码或名称…"
+              value="300059"
+              autocomplete="off"
+            />
+            <div id="stockSearchResults" class="search-results"></div>
+          </div>
+          <div class="analyze-row">
+            <button id="analyzeBtn" class="btn-analyze" type="button" data-i18n="analyzeBtn">分析</button>
+            <button id="addWatchBtn" class="btn-icon" type="button" title="加入关注">★</button>
+          </div>
+          <p id="status" class="status"></p>
+          <div id="setupNote" class="help-card" style="display:none">
+            <span data-i18n="setupTitle">无法分析？</span>
+            <span data-i18n="setupText"> 后端可能正在唤醒，稍候再试。</span>
+          </div>
+          <details class="advanced-settings">
+            <summary data-i18n="advancedLabel">高级设置</summary>
+            <div class="adv-field">
+              <label for="apiBase" data-i18n="apiBaseLabel">后端 API 地址</label>
+              <input id="apiBase" type="text" placeholder="https://your-api.onrender.com" />
+            </div>
+            <div class="toggle-row">
+              <span data-i18n="gptToggleTitle">启用 GPT 分析</span>
+              <input id="useLlm" type="checkbox" checked />
+            </div>
+            <div style="margin-top:6px">
+              <a href="debug.html" style="font-size:0.72rem;color:var(--muted-2);text-decoration:none" data-i18n="openDebugBtn">查看原始数据 →</a>
+            </div>
+          </details>
+        </div>
+
+        <!-- Watchlist -->
+        <div class="watch-header">
+          <span class="sec-label" style="border:none;padding:0" data-i18n="watchlistTitle">自选股</span>
+          <div class="watch-btns">
+            <button id="refreshWatchlistBtn" class="btn-icon" type="button" title="刷新" style="padding:4px 8px;font-size:0.78rem">↻</button>
+            <button id="toggleWatchlistAutoBtn" class="btn-icon" type="button" title="自动刷新" style="padding:4px 8px;font-size:0.78rem">⏱</button>
+          </div>
+        </div>
+        <div class="watch-col-head">
+          <span>代码 / 名称</span><span style="text-align:right">现价</span><span style="text-align:right">涨跌</span><span></span>
+        </div>
+        <div id="watchlistGrid"></div>
+        <div id="watchlistMeta" style="padding:4px 10px;font-size:0.7rem;color:var(--muted-2);border-bottom:1px solid var(--line)"></div>
+
+        <!-- Market Quick Picks -->
+        <div class="mkt-tabs">
+          <button class="mkt-tab active" data-list="gainers" data-i18n="quicklistGainers">涨幅</button>
+          <button class="mkt-tab" data-list="losers" data-i18n="quicklistLosers">跌幅</button>
+          <button class="mkt-tab" data-list="active" data-i18n="quicklistActive">成交</button>
+          <button class="mkt-tab" data-list="caps" data-i18n="quicklistCaps">市值</button>
+        </div>
+        <div id="quicklistGainers" class="quick-list show"></div>
+        <div id="quicklistLosers" class="quick-list"></div>
+        <div id="quicklistActive" class="quick-list"></div>
+        <div id="quicklistCaps" class="quick-list"></div>
+
+      </aside>
+
+      <!-- ── CENTER: Stock Info + Chart + Signals ── -->
+      <main class="col col-center">
+
+        <!-- Stock titlebar -->
+        <div class="stock-bar">
+          <div class="stock-id">
+            <span id="centerCode" class="stock-code-big">--</span>
+            <span id="centerName" class="stock-name-big">--</span>
+          </div>
+          <div class="price-cluster">
+            <span id="centerPrice" class="price-big">--</span>
+            <span id="centerChange" class="price-change">--</span>
+          </div>
+          <div id="realtimeMetrics"></div>
+        </div>
+
+        <!-- Decision bar -->
+        <div class="decision-bar">
+          <div class="dec-cell">
+            <span class="dec-label" data-i18n="overviewDirection">方向</span>
+            <strong id="heroDirection" class="dec-val">-</strong>
+          </div>
+          <div class="dec-cell">
+            <span class="dec-label" data-i18n="overviewScore">评分</span>
+            <strong id="heroScore" class="dec-val">-</strong>
+          </div>
+          <div class="dec-cell">
+            <span class="dec-label" data-i18n="overviewDecision">偏向</span>
+            <strong id="heroDecisionTag" class="decision-tag decision-neutral">-</strong>
+          </div>
+          <div class="dec-cell">
+            <span class="dec-label" data-i18n="overviewConfidence">置信度</span>
+            <strong id="heroConfidence" class="dec-val">-</strong>
+          </div>
+          <div class="dec-cell">
+            <span class="dec-label" data-i18n="overviewTimeframe">时间框架</span>
+            <strong id="heroTimeframe" class="dec-val">-</strong>
+          </div>
+        </div>
+
+        <!-- K-line Chart -->
+        <div class="chart-area">
+          <div class="chart-toolbar">
+            <div class="chart-legend">
+              <span class="legend-item"><span class="legend-dot" style="background:#2ed09a"></span><span data-i18n="legendClose">K线</span></span>
+              <span class="legend-item"><span class="legend-dot" style="background:#35d39a"></span><span data-i18n="legendMa5">MA5</span></span>
+              <span class="legend-item"><span class="legend-dot" style="background:#f3b14b"></span><span data-i18n="legendMa20">MA20</span></span>
+              <span class="legend-item"><span class="legend-dot" style="background:rgba(102,209,255,0.5)"></span><span>VOL</span></span>
+            </div>
+            <div class="segmented" aria-label="Chart Period">
+              <button id="periodDaily" class="active" type="button" data-period="daily" data-i18n="periodDaily">日线</button>
+              <button id="period60" type="button" data-period="60" data-i18n="period60">60分</button>
+              <button id="period15" type="button" data-period="15" data-i18n="period15">15分</button>
+            </div>
+          </div>
+          <div class="chart-wrap">
+            <svg id="priceChart" class="chart-svg" viewBox="0 0 860 470" preserveAspectRatio="none"></svg>
+          </div>
+          <div class="chart-meta">
+            <span id="chartMetaLeft">OHLC + MA5 + MA20 + VOL</span>
+            <span id="chartMetaRight">60 个交易日</span>
+          </div>
+        </div>
+
+        <!-- Signals & Indicators -->
+        <div class="signals-area">
+          <div class="sig-block">
+            <div class="sig-title" data-i18n="ruleTitle">判断信号</div>
+            <ul id="signalsOutput" class="signal-list"></ul>
+            <p id="analysisOutput" class="text-box" style="margin-top:6px"></p>
+          </div>
+          <div class="sig-block">
+            <div class="sig-title" data-i18n="riskTitle">收盘信号</div>
+            <p id="closeSignalOutput" class="text-box">--</p>
+          </div>
+          <div class="sig-block">
+            <div class="sig-title" data-i18n="techTitle">技术指标</div>
+            <div id="indicatorMetrics"></div>
+          </div>
+        </div>
+
+        <!-- Fund Flow -->
+        <div class="fundflow-area">
+          <div class="sig-title" data-i18n="fundFlowTitle">资金流向</div>
+          <div id="fundFlowMetrics"></div>
+          <ul id="fundFlowSignals" class="signal-list"></ul>
+        </div>
+
+      </main>
+
+      <!-- ── RIGHT: AI Analysis + Chat ── -->
+      <aside class="col col-right">
+
+        <div class="ai-section">
+          <div class="sec-label" data-i18n="gptTitle">AI 分析</div>
+          <div id="llmOutput">--</div>
+        </div>
+
+        <div class="chat-section">
+          <div class="sec-label" data-i18n="assistantTitle">AI 追问</div>
+          <div id="assistantLog" class="assistant-log"></div>
+          <div class="chat-input-area">
+            <textarea
+              id="assistantQuestion"
+              rows="3"
+              data-i18n-placeholder="assistantPlaceholder"
+              placeholder="继续追问这只股票…"
+            ></textarea>
+            <div class="chat-send-row">
+              <span class="chat-hint">⌘ + Enter</span>
+              <button id="assistantAskBtn" class="btn-send" type="button" data-i18n="assistantAskBtn">发送</button>
+            </div>
+          </div>
+        </div>
+
+      </aside>
+
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
