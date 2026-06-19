@@ -2013,43 +2013,98 @@ def fetch_index_quotes_sina() -> List[Dict[str, Any]]:
     return results
 
 
+# Sector code cache populated by fetch_sector_list(); avoids a second HTTP call in
+# fetch_sector_stocks() when the caller already rendered the sector list.
+SECTOR_CODE_CACHE: Dict[str, str] = {}
+
+
 def fetch_sector_list() -> List[Dict[str, Any]]:
-    """All industry sectors with daily change%, sorted descending."""
-    df = ak.stock_board_industry_name_em()
-    if df is None or df.empty:
-        raise ValueError("stock_board_industry_name_em returned empty data.")
+    """Industry sectors via direct EastMoney push API (bypasses AKShare which sends no headers)."""
+    url = "https://17.push2.eastmoney.com/api/qt/clist/get"
+    params = {
+        "pn": "1",
+        "pz": "100",
+        "po": "1",
+        "np": "1",
+        "ut": "bd1d9ddb04089700cf9c27f6f7426281",
+        "fltt": "2",
+        "invt": "2",
+        "fid": "f3",
+        "fs": "m:90 t:2 f:!50",
+        "fields": "f3,f6,f12,f14,f104,f105,f128,f136",
+    }
+    headers = {
+        **DEFAULT_HEADERS,
+        "Referer": "https://quote.eastmoney.com/center/boardlist.html",
+        "Accept": "application/json, text/plain, */*",
+    }
+    resp = requests.get(url, params=params, headers=headers, timeout=15)
+    resp.raise_for_status()
+    diffs = (resp.json().get("data") or {}).get("diff") or []
+    if not diffs:
+        raise ValueError("EastMoney sector API returned empty diff list.")
 
     results = []
-    for _, row in df.iterrows():
+    for item in diffs:
+        name = str(item.get("f14") or "")
+        code = str(item.get("f12") or "")
+        if name and code:
+            SECTOR_CODE_CACHE[name] = code
         results.append({
-            "name": str(row.get("板块名称", "")),
-            "change_percent": safe_float(row.get("涨跌幅")),
-            "amount": safe_float(row.get("成交额")),
-            "rise_count": int(row.get("上涨家数", 0)) if pd.notna(row.get("上涨家数")) else 0,
-            "fall_count": int(row.get("下跌家数", 0)) if pd.notna(row.get("下跌家数")) else 0,
-            "leader": str(row.get("领涨股票", "")),
-            "leader_change": safe_float(row.get("领涨股票-涨跌幅")),
+            "name": name,
+            "code": code,
+            "change_percent": safe_float(item.get("f3")),
+            "amount": safe_float(item.get("f6")),
+            "rise_count": int(item.get("f104") or 0),
+            "fall_count": int(item.get("f105") or 0),
+            "leader": str(item.get("f128") or ""),
+            "leader_change": safe_float(item.get("f136")),
         })
     results.sort(key=lambda x: (x["change_percent"] is not None, x["change_percent"] or 0), reverse=True)
     return results
 
 
 def fetch_sector_stocks(sector_name: str) -> List[Dict[str, Any]]:
-    """Stocks within a named industry sector, sorted by daily change% descending."""
-    df = ak.stock_board_industry_cons_em(symbol=sector_name)
-    if df is None or df.empty:
-        raise ValueError(f"No stocks found for sector: {sector_name}")
+    """Stocks in a sector via direct EastMoney push API."""
+    board_code = SECTOR_CODE_CACHE.get(sector_name)
+    if not board_code:
+        # Populate cache via a sector list fetch, then retry.
+        fetch_sector_list()
+        board_code = SECTOR_CODE_CACHE.get(sector_name)
+    if not board_code:
+        raise ValueError(f"Unknown sector (no board code found): {sector_name}")
+
+    url = "https://29.push2.eastmoney.com/api/qt/clist/get"
+    params = {
+        "pn": "1",
+        "pz": "100",
+        "po": "1",
+        "np": "1",
+        "ut": "bd1d9ddb04089700cf9c27f6f7426281",
+        "fltt": "2",
+        "invt": "2",
+        "fid": "f3",
+        "fs": f"b:{board_code}+f:!50+s:z",
+        "fields": "f2,f3,f5,f6,f8,f12,f14",
+    }
+    headers = {
+        **DEFAULT_HEADERS,
+        "Referer": f"https://data.eastmoney.com/bkzj/{board_code}.html",
+        "Accept": "application/json, text/plain, */*",
+    }
+    resp = requests.get(url, params=params, headers=headers, timeout=15)
+    resp.raise_for_status()
+    diffs = (resp.json().get("data") or {}).get("diff") or []
 
     results = []
-    for _, row in df.iterrows():
-        code = str(row.get("代码", "")).zfill(6)
+    for item in diffs:
         results.append({
-            "code": code,
-            "name": str(row.get("名称", "")),
-            "price": safe_float(row.get("最新价")),
-            "change_percent": safe_float(row.get("涨跌幅")),
-            "amount": safe_float(row.get("成交额")),
-            "turnover_rate": safe_float(row.get("换手率")),
+            "code": str(item.get("f12") or "").zfill(6),
+            "name": str(item.get("f14") or ""),
+            "price": safe_float(item.get("f2")),
+            "change_percent": safe_float(item.get("f3")),
+            "amount": safe_float(item.get("f6")),
+            "turnover_rate": safe_float(item.get("f8")),
         })
     results.sort(key=lambda x: (x["change_percent"] is not None, x["change_percent"] or 0), reverse=True)
     return results
