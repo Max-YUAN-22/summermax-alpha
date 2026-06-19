@@ -2020,7 +2020,7 @@ SECTOR_CODE_CACHE: Dict[str, str] = {}
 
 def fetch_sector_list() -> List[Dict[str, Any]]:
     """Industry sectors via direct EastMoney push API (bypasses AKShare which sends no headers)."""
-    url = "https://17.push2.eastmoney.com/api/qt/clist/get"
+    url = "https://82.push2.eastmoney.com/api/qt/clist/get"
     params = {
         "pn": "1",
         "pz": "100",
@@ -2074,7 +2074,7 @@ def fetch_sector_stocks(sector_name: str) -> List[Dict[str, Any]]:
     if not board_code:
         raise ValueError(f"Unknown sector (no board code found): {sector_name}")
 
-    url = "https://29.push2.eastmoney.com/api/qt/clist/get"
+    url = "https://82.push2.eastmoney.com/api/qt/clist/get"
     params = {
         "pn": "1",
         "pz": "100",
