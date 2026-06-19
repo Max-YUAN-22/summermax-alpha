@@ -1,4 +1,6 @@
 const DEFAULT_API_BASE = "https://summermax-alpha-api.onrender.com";
+const FETCH_TIMEOUT_MS = 25000;
+const MAX_RETRIES = 2;
 
 function getApiBase() {
   const saved = localStorage.getItem("summermax-alpha-api-base");
@@ -29,6 +31,32 @@ function fmtAmount(value) {
   return n.toFixed(0);
 }
 
+async function fetchWithTimeout(url, options = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    return res;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchWithRetry(url, retries = MAX_RETRIES) {
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fetchWithTimeout(url);
+    } catch (err) {
+      lastErr = err;
+      if (attempt < retries) {
+        await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+      }
+    }
+  }
+  throw lastErr;
+}
+
 const sectorListEl = document.getElementById("sectorList");
 const sectorLoadingEl = document.getElementById("sectorLoading");
 const stockPanelEl = document.getElementById("stockPanel");
@@ -44,7 +72,7 @@ async function loadSectors() {
   if (sectorListEl) sectorListEl.innerHTML = "";
 
   try {
-    const res = await fetch(`${apiBase}/market/sectors`);
+    const res = await fetchWithRetry(`${apiBase}/market/sectors`);
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || "Failed to load sectors");
 
@@ -87,7 +115,10 @@ async function loadSectors() {
     });
   } catch (err) {
     if (sectorLoadingEl) sectorLoadingEl.style.display = "none";
-    if (sectorListEl) sectorListEl.innerHTML = `<div class="empty-note">加载失败：${err.message}。后端可能正在唤醒，稍候刷新。</div>`;
+    const msg = err.name === "AbortError"
+      ? "请求超时。后端正在唤醒中（约需 30 秒），请稍候刷新页面。"
+      : `加载失败：${err.message}。后端可能正在唤醒，稍候刷新。`;
+    if (sectorListEl) sectorListEl.innerHTML = `<div class="empty-note">${msg}</div>`;
   }
 }
 
@@ -101,7 +132,7 @@ async function loadSectorStocks(sectorName) {
   if (stockLoadingEl) stockLoadingEl.style.display = "block";
 
   try {
-    const res = await fetch(`${apiBase}/market/sector/stocks?name=${encodeURIComponent(sectorName)}`);
+    const res = await fetchWithRetry(`${apiBase}/market/sector/stocks?name=${encodeURIComponent(sectorName)}`);
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || "Failed to load stocks");
 
@@ -141,7 +172,8 @@ async function loadSectorStocks(sectorName) {
     `;
   } catch (err) {
     if (stockLoadingEl) stockLoadingEl.style.display = "none";
-    if (stockTableEl) stockTableEl.innerHTML = `<div class="empty-note">加载失败：${err.message}</div>`;
+    const msg = err.name === "AbortError" ? "请求超时，请重试。" : `加载失败：${err.message}`;
+    if (stockTableEl) stockTableEl.innerHTML = `<div class="empty-note">${msg}</div>`;
   }
 }
 
