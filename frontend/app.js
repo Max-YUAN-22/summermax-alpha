@@ -40,6 +40,12 @@ const refreshWatchlistBtn = document.getElementById("refreshWatchlistBtn");
 const toggleWatchlistAutoBtn = document.getElementById("toggleWatchlistAutoBtn");
 const watchlistGridEl = document.getElementById("watchlistGrid");
 const watchlistMetaEl = document.getElementById("watchlistMeta");
+const centerCodeEl = document.getElementById("centerCode");
+const centerNameEl = document.getElementById("centerName");
+const centerPriceEl = document.getElementById("centerPrice");
+const centerChangeEl = document.getElementById("centerChange");
+const gptStatusDotEl = document.getElementById("gptStatusDot");
+const gptStatusLabelEl = document.getElementById("gptStatusLabel");
 
 const I18N = {
   zh: {
@@ -55,8 +61,13 @@ const I18N = {
     miniApiValue: "后端环境变量",
     miniKeysLabel: "必填",
     miniOptionalLabel: "可选",
+    navHome: "首页",
     navWorkspace: "工作台",
+    navScan: "扫描",
     navDebug: "调试台",
+    gptStatusChecking: "GPT 检测中…",
+    gptStatusOk: "GPT-5.5 已就绪",
+    gptStatusErr: "GPT 不可用",
     controlTitle: "查股票",
     controlText: "输入股票代码或公司名称，支持全部 A 股搜索。",
     stockCodeLabel: "股票代码或名称",
@@ -199,8 +210,13 @@ const I18N = {
     miniApiValue: "Backend environment variables",
     miniKeysLabel: "Required",
     miniOptionalLabel: "Optional",
+    navHome: "Home",
     navWorkspace: "Workspace",
+    navScan: "Scan",
     navDebug: "Debug",
+    gptStatusChecking: "Checking GPT…",
+    gptStatusOk: "GPT-5.5 Ready",
+    gptStatusErr: "GPT Unavailable",
     controlTitle: "Search Stock",
     controlText: "Enter a stock code or company name. All A-shares supported.",
     stockCodeLabel: "Code or Company Name",
@@ -434,9 +450,22 @@ function formatSignedNumber(value) {
 }
 
 function renderRealtime(realtime = {}) {
+  if (centerPriceEl) {
+    const chg = Number(realtime.change_percent);
+    centerPriceEl.textContent = realtime.price != null ? formatNumber(realtime.price) : "--";
+    centerPriceEl.className = "price-big" + (!Number.isNaN(chg) && realtime.price != null ? (chg >= 0 ? " up" : " down") : "");
+  }
+  if (centerChangeEl) {
+    const chg = Number(realtime.change_percent);
+    if (realtime.change_percent != null && !Number.isNaN(chg)) {
+      centerChangeEl.textContent = `${chg >= 0 ? "+" : ""}${formatNumber(chg)}%`;
+      centerChangeEl.className = "price-change" + (chg >= 0 ? " up" : " down");
+    } else {
+      centerChangeEl.textContent = "--";
+      centerChangeEl.className = "price-change";
+    }
+  }
   realtimeMetricsEl.innerHTML = [
-    createMetric(t("metricPrice"), formatNumber(realtime.price)),
-    createMetric(t("metricChange"), formatNumber(realtime.change_percent)),
     createMetric(t("metricOpen"), formatNumber(realtime.open)),
     createMetric(t("metricPreClose"), formatNumber(realtime.pre_close)),
     createMetric(t("metricHigh"), formatNumber(realtime.high)),
@@ -789,24 +818,20 @@ function renderWatchlist(results = []) {
   watchlistGridEl.innerHTML = codes.map((code) => {
     const item = resultMap.get(code);
     const change = Number(item?.realtime?.change_percent);
+    const changeClass = Number.isNaN(change) ? "" : change >= 0 ? "up" : "down";
+    const changeText = item?.realtime?.change_percent != null && !Number.isNaN(change)
+      ? `${change >= 0 ? "+" : ""}${formatNumber(change)}%`
+      : "-";
     return `
-      <article class="watch-card" data-watch-code="${code}">
-        <div class="watch-top">
-          <div>
-            <span class="watch-code">${code}</span>
-            <span class="watch-name">${item?.name || "-"}</span>
-          </div>
-          <button type="button" class="watch-remove" data-remove-code="${code}">${t("watchlistRemoved")}</button>
+      <div class="watch-row" data-watch-code="${code}">
+        <div class="watch-row-id">
+          <span class="watch-row-code">${code}</span>
+          <span class="watch-row-name">${item?.name || "-"}</span>
         </div>
-        <div class="watch-stats">
-          <div class="watch-stat"><span>${t("watchPrice")}</span><strong>${formatNumber(item?.realtime?.price)}</strong></div>
-          <div class="watch-stat"><span>${t("watchChange")}</span><strong class="${Number.isNaN(change) ? "" : change >= 0 ? "up" : "down"}">${item?.realtime?.change_percent != null ? `${formatNumber(item.realtime.change_percent)}%` : "-"}</strong></div>
-          <div class="watch-stat"><span>${t("watchScore")}</span><strong>${item?.scorecard?.total ?? "-"}</strong></div>
-          <div class="watch-stat"><span>${t("watchBias")}</span><strong>${item?.final_decision?.bias || "-"}</strong></div>
-          <div class="watch-stat"><span>${t("watchRisk")}</span><strong>${item?.risk_assessment?.level || "-"}</strong></div>
-          <div class="watch-stat"><span>${t("overviewTimeframe")}</span><strong>${item?.llm_analysis?.summary?.timeframe || "-"}</strong></div>
-        </div>
-      </article>
+        <span class="watch-row-price ${changeClass}">${formatNumber(item?.realtime?.price)}</span>
+        <span class="watch-row-chg ${changeClass}">${changeText}</span>
+        <button type="button" class="watch-row-del" data-remove-code="${code}">×</button>
+      </div>
     `;
   }).join("");
 
@@ -972,6 +997,29 @@ async function loadMarketQuicklists() {
   }
 }
 
+async function checkGptStatus() {
+  const apiBase = normalizeApiBase(apiBaseInput.value);
+  if (!apiBase) {
+    return;
+  }
+  if (gptStatusDotEl) gptStatusDotEl.className = "gpt-dot";
+  if (gptStatusLabelEl) gptStatusLabelEl.textContent = t("gptStatusChecking");
+  try {
+    const response = await fetch(`${apiBase}/health`);
+    const data = await response.json();
+    if (response.ok && data.llm_configured) {
+      if (gptStatusDotEl) gptStatusDotEl.className = "gpt-dot ok";
+      if (gptStatusLabelEl) gptStatusLabelEl.textContent = t("gptStatusOk");
+    } else {
+      if (gptStatusDotEl) gptStatusDotEl.className = "gpt-dot err";
+      if (gptStatusLabelEl) gptStatusLabelEl.textContent = t("gptStatusErr");
+    }
+  } catch {
+    if (gptStatusDotEl) gptStatusDotEl.className = "gpt-dot err";
+    if (gptStatusLabelEl) gptStatusLabelEl.textContent = t("gptStatusErr");
+  }
+}
+
 async function searchStocks() {
   const keyword = stockCodeInput.value.trim();
   const apiBase = normalizeApiBase(apiBaseInput.value);
@@ -1031,6 +1079,10 @@ async function analyzeStock() {
   realtimeMetricsEl.innerHTML = "";
   indicatorMetricsEl.innerHTML = "";
   signalsOutputEl.innerHTML = "";
+  if (centerCodeEl) centerCodeEl.textContent = code;
+  if (centerNameEl) centerNameEl.textContent = "";
+  if (centerPriceEl) { centerPriceEl.textContent = "--"; centerPriceEl.className = "price-big"; }
+  if (centerChangeEl) { centerChangeEl.textContent = "--"; centerChangeEl.className = "price-change"; }
   renderChart({});
   renderHeroSummary({});
   renderFundFlow({});
@@ -1098,6 +1150,8 @@ async function analyzeStock() {
       stockData.intraday || {},
     );
     renderHeroSummary(stockData);
+    if (centerCodeEl) centerCodeEl.textContent = stockData.code || code;
+    if (centerNameEl) centerNameEl.textContent = stockData.name || "";
     currentStockContext = stockData;
     localStorage.setItem("summermax-alpha-last-json", JSON.stringify({ stock: stockData, close: closeData }, null, 2));
     localStorage.setItem("summermax-alpha-assistant-history", JSON.stringify([]));
@@ -1125,6 +1179,7 @@ async function analyzeStock() {
 analyzeBtn.addEventListener("click", analyzeStock);
 apiBaseInput.addEventListener("input", updateSetupNote);
 apiBaseInput.addEventListener("change", loadMarketQuicklists);
+apiBaseInput.addEventListener("change", checkGptStatus);
 stockCodeInput.addEventListener("input", searchStocks);
 langZhBtn.addEventListener("click", () => setLanguage("zh"));
 langEnBtn.addEventListener("click", () => setLanguage("en"));
@@ -1199,6 +1254,18 @@ document.addEventListener("click", (event) => {
   analyzeStock();
 });
 
+document.querySelectorAll(".mkt-tab").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".mkt-tab").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    const listKey = btn.dataset.list || "";
+    const id = `quicklist${listKey.charAt(0).toUpperCase() + listKey.slice(1)}`;
+    document.querySelectorAll(".quick-list").forEach((l) => l.classList.remove("show"));
+    const target = document.getElementById(id);
+    if (target) target.classList.add("show");
+  });
+});
+
 setLanguage(currentLang);
 updateSetupNote();
 renderChart({});
@@ -1213,3 +1280,4 @@ syncWatchlistAutoState();
 renderWatchlist([]);
 refreshWatchlist();
 loadMarketQuicklists();
+checkGptStatus();
