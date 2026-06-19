@@ -1091,63 +1091,30 @@ async function analyzeStock() {
   renderHeroSummary({});
   renderFundFlow({});
 
+  // ── Phase 1: fast data (no LLM) ─────────────────────────────────────────
   try {
-    const realtimeUrl = `${apiBase}/quote/realtime?code=${encodeURIComponent(code)}`;
-    const stockUrl = `${apiBase}/stock?code=${encodeURIComponent(code)}&use_llm=${useLlm}`;
-    const closeUrl = `${apiBase}/analysis/close?code=${encodeURIComponent(code)}&use_llm=${useLlm}`;
-    const fundFlowUrl = `${apiBase}/fund-flow/stock?code=${encodeURIComponent(code)}`;
+    const fastStockUrl = `${apiBase}/stock?code=${encodeURIComponent(code)}&use_llm=false`;
+    const fundFlowUrl  = `${apiBase}/fund-flow/stock?code=${encodeURIComponent(code)}`;
 
-    const [realtimeResponse, stockResponse, closeResponse, fundFlowResponse] = await Promise.all([
-      fetch(realtimeUrl),
-      fetch(stockUrl),
-      fetch(closeUrl),
+    const [stockResponse, fundFlowResponse] = await Promise.all([
+      fetch(fastStockUrl),
       fetch(fundFlowUrl),
     ]);
 
-    const realtimeData = await realtimeResponse.json();
-    const stockData = await stockResponse.json();
-    const closeData = await closeResponse.json();
+    const stockData    = await stockResponse.json();
     const fundFlowData = await fundFlowResponse.json();
 
-    renderRealtime(realtimeResponse.ok ? realtimeData.realtime : {});
-
-    if (!stockResponse.ok || !closeResponse.ok) {
-      const stockError = stockData.detail || t("unknownError");
-      const closeError = closeData.detail || t("unknownError");
-
-      if (realtimeResponse.ok) {
-        setStatus(`${t("quoteLoadedButAnalysisFailed")} ${stockError}${closeResponse.ok ? "" : ` | ${closeError}`}`, true);
-        localStorage.setItem(
-          "summermax-alpha-last-json",
-          JSON.stringify(
-            {
-              realtime: realtimeData,
-              stock_error: stockError,
-              close_error: closeResponse.ok ? null : closeError,
-            },
-            null,
-            2,
-          ),
-        );
-        renderIndicators({});
-        renderRuleAnalysis({});
-        renderLlmAnalysis(null);
-        renderCloseSignal({}, {}, {});
-        renderFundFlow({});
-        return;
-      }
-
-      throw new Error(`${stockError}${closeResponse.ok ? "" : ` | ${closeError}`}`);
+    if (!stockResponse.ok) {
+      throw new Error(stockData.detail || t("unknownError"));
     }
 
     renderRealtime(stockData.realtime);
     renderIndicators(stockData.indicators);
     renderChart(stockData.chart);
     renderRuleAnalysis(stockData.analysis);
-    renderLlmAnalysis(stockData.llm_analysis);
     renderFundFlow(fundFlowResponse.ok ? fundFlowData : {});
     renderCloseSignal(
-      closeData.close_signal,
+      stockData.close_signal || {},
       stockData.risk_assessment,
       stockData.final_decision,
       stockData.scorecard,
@@ -1157,14 +1124,18 @@ async function analyzeStock() {
     if (centerCodeEl) centerCodeEl.textContent = stockData.code || code;
     if (centerNameEl) centerNameEl.textContent = stockData.name || "";
     currentStockContext = stockData;
-    localStorage.setItem("summermax-alpha-last-json", JSON.stringify({ stock: stockData, close: closeData }, null, 2));
+    localStorage.setItem("summermax-alpha-last-json", JSON.stringify({ stock: stockData }, null, 2));
     localStorage.setItem("summermax-alpha-assistant-history", JSON.stringify([]));
     renderAssistantLog([]);
-    setStatus(`${t("loadedPrefix")} ${stockData.code} ${stockData.name || ""} ${t("at")} ${stockData.realtime.quote_time}.`);
-    refreshWatchlist();
+
+    const fastAt = stockData.realtime?.quote_time || "";
+    setStatus(`${t("loadedPrefix")} ${stockData.code} ${stockData.name || ""} ${t("at")} ${fastAt}${useLlm ? " — AI 分析中…" : ""}`);
+    analyzeBtn.disabled = false;
+
     if (currentPeriod !== "daily") {
-      await loadChartPeriod(currentPeriod, code);
+      loadChartPeriod(currentPeriod, code);
     }
+    refreshWatchlist();
   } catch (error) {
     setStatus(error.message || t("unknownError"), true);
     renderRealtime({});
@@ -1175,8 +1146,32 @@ async function analyzeStock() {
     renderCloseSignal({}, {}, {});
     renderFundFlow({});
     localStorage.setItem("summermax-alpha-last-json", t("unknownError"));
-  } finally {
     analyzeBtn.disabled = false;
+    return;
+  }
+
+  // ── Phase 2: LLM analysis (background, non-blocking) ────────────────────
+  if (!useLlm) {
+    renderLlmAnalysis(null);
+    return;
+  }
+
+  try {
+    const llmResponse = await fetch(`${apiBase}/stock?code=${encodeURIComponent(code)}&use_llm=true`);
+    const llmData = await llmResponse.json();
+
+    if (llmResponse.ok) {
+      renderLlmAnalysis(llmData.llm_analysis);
+      renderHeroSummary(llmData);
+      currentStockContext = llmData;
+      localStorage.setItem("summermax-alpha-last-json", JSON.stringify({ stock: llmData }, null, 2));
+      const at = llmData.realtime?.quote_time || "";
+      setStatus(`${t("loadedPrefix")} ${llmData.code} ${llmData.name || ""} ${t("at")} ${at}.`);
+    } else {
+      renderLlmAnalysis({ status: "error", content: { detail: llmData.detail || t("unknownError") } });
+    }
+  } catch {
+    renderLlmAnalysis(null);
   }
 }
 

@@ -86,6 +86,12 @@ STOCK_UNIVERSE_CACHE: Dict[str, Any] = {
     "loaded_at": None,
 }
 STOCK_UNIVERSE_TTL = timedelta(minutes=30)
+
+# Per-code caches to avoid redundant AKShare + LLM calls
+HISTORY_CACHE: Dict[str, Any] = {}
+HISTORY_CACHE_TTL = timedelta(minutes=5)
+SNAPSHOT_BASE_CACHE: Dict[str, Any] = {}
+SNAPSHOT_BASE_CACHE_TTL = timedelta(minutes=3)
 CURATED_FOCUS_LIST = [
     {"code": "600519", "name": "贵州茅台"},
     {"code": "300750", "name": "宁德时代"},
@@ -286,6 +292,16 @@ def fetch_stock_history(code: str) -> tuple[pd.DataFrame, str]:
         errors.append(f"waizao history failed: {exc}")
 
     raise ValueError(f"Failed to fetch historical stock data: {' | '.join(errors)}")
+
+
+def fetch_stock_history_cached(code: str) -> tuple[pd.DataFrame, str]:
+    """Return cached history DataFrame when fresh; otherwise fetch and cache."""
+    entry = HISTORY_CACHE.get(code)
+    if entry and datetime.now() - entry["loaded_at"] < HISTORY_CACHE_TTL:
+        return entry["df"].copy(), entry["source"]
+    df, source = fetch_stock_history(code)
+    HISTORY_CACHE[code] = {"df": df, "source": source, "loaded_at": datetime.now()}
+    return df.copy(), source
 
 
 def fetch_multiperiod_history_from_em(code: str, period: str) -> pd.DataFrame:
@@ -1542,52 +1558,65 @@ def generate_llm_analysis(snapshot: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 
 def build_snapshot(code: str, include_llm: bool) -> Dict[str, Any]:
-    history_df, history_source = fetch_stock_history(code)
-    indicators = compute_indicators(history_df)
-    chart = build_chart_payload(history_df)
-    realtime = fetch_realtime_quote(code)
-    intraday_context, intraday_source = fetch_intraday_context(code)
-    core_snapshot = {
-        "code": code,
-        "realtime": realtime,
-        "indicators": indicators,
-        "intraday": intraday_context,
-    }
-    technical_analysis = build_technical_analysis(core_snapshot)
-    risk_assessment = build_risk_assessment(core_snapshot)
-    final_decision = build_final_decision(core_snapshot)
-    scorecard = build_scorecard(
-        {
-            **core_snapshot,
+    # Use cached base snapshot when fresh (avoids repeat AKShare + indicator work)
+    base_entry = SNAPSHOT_BASE_CACHE.get(code)
+    if base_entry and datetime.now() - base_entry["loaded_at"] < SNAPSHOT_BASE_CACHE_TTL:
+        snapshot = {**base_entry["snapshot"]}
+    else:
+        history_df, history_source = fetch_stock_history_cached(code)
+        indicators = compute_indicators(history_df)
+        chart = build_chart_payload(history_df)
+        realtime = fetch_realtime_quote(code)
+        intraday_context, intraday_source = fetch_intraday_context(code)
+        core_snapshot = {
+            "code": code,
+            "realtime": realtime,
+            "indicators": indicators,
+            "intraday": intraday_context,
+        }
+        technical_analysis = build_technical_analysis(core_snapshot)
+        risk_assessment = build_risk_assessment(core_snapshot)
+        final_decision = build_final_decision(core_snapshot)
+        scorecard = build_scorecard(
+            {
+                **core_snapshot,
+                "technical_analysis": technical_analysis,
+                "risk_assessment": risk_assessment,
+                "final_decision": final_decision,
+            }
+        )
+        close_signal = {
+            "engine": "close_signal_v1",
+            "bias": "hold_for_review" if final_decision.get("bias") == "bullish_watch" else "reduce_risk",
+            "note": "Tail-session decision support only. Not investment advice.",
+        }
+
+        snapshot = {
+            "code": code,
+            "name": realtime["name"],
+            "realtime": realtime,
+            "indicators": indicators,
+            "chart": chart,
+            "intraday": intraday_context,
+            "analysis": technical_analysis,
             "technical_analysis": technical_analysis,
             "risk_assessment": risk_assessment,
             "final_decision": final_decision,
+            "scorecard": scorecard,
+            "close_signal": close_signal,
+            "meta": {
+                "market": "CN-A",
+                "history_source": history_source,
+                "realtime_source": realtime.get("source"),
+                "intraday_source": intraday_source,
+                "lookback_trading_days": 60,
+                "adjustment": "qfq",
+                "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "llm_enabled": include_llm,
+            },
         }
-    )
-
-    snapshot = {
-        "code": code,
-        "name": realtime["name"],
-        "realtime": realtime,
-        "indicators": indicators,
-        "chart": chart,
-        "intraday": intraday_context,
-        "analysis": technical_analysis,
-        "technical_analysis": technical_analysis,
-        "risk_assessment": risk_assessment,
-        "final_decision": final_decision,
-        "scorecard": scorecard,
-        "meta": {
-            "market": "CN-A",
-            "history_source": history_source,
-            "realtime_source": realtime.get("source"),
-            "intraday_source": intraday_source,
-            "lookback_trading_days": 60,
-            "adjustment": "qfq",
-            "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "llm_enabled": include_llm,
-        },
-    }
+        # Cache the base snapshot (without LLM) for subsequent calls
+        SNAPSHOT_BASE_CACHE[code] = {"snapshot": {**snapshot, "llm_analysis": None}, "loaded_at": datetime.now()}
 
     snapshot["llm_analysis"] = generate_llm_analysis(snapshot) if include_llm else None
     return snapshot
