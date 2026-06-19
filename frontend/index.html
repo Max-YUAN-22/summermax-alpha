@@ -666,31 +666,29 @@
         padding: 8px 0;
       }
 
-      /* Fund flow */
+      /* Fund flow — matches sig-block style */
       .fundflow-area {
         padding: 10px 14px;
         border-top: 1px solid var(--line);
-        display: grid;
-        grid-template-columns: auto 1fr;
-        gap: 12px;
-        align-items: start;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
       }
 
       #fundFlowMetrics {
         display: flex;
         flex-direction: column;
-        gap: 4px;
-        min-width: 130px;
+        gap: 0;
       }
 
       #fundFlowMetrics .metric {
         flex-direction: row;
         justify-content: space-between;
-        padding: 3px 0;
+        padding: 4px 0;
         border-bottom: 1px solid rgba(132,157,189,0.07);
       }
 
-      #fundFlowSignals { font-size: 0.74rem; }
+      #fundFlowSignals { font-size: 0.74rem; color: var(--muted); }
 
       /* ══════════════════════════════════════
          RIGHT COLUMN
@@ -993,10 +991,8 @@
 
         <!-- Fund Flow -->
         <div class="fundflow-area">
-          <div>
-            <div class="sig-title" style="margin-bottom:6px" data-i18n="fundFlowTitle">资金流向</div>
-            <div id="fundFlowMetrics"></div>
-          </div>
+          <div class="sig-title" data-i18n="fundFlowTitle">资金流向</div>
+          <div id="fundFlowMetrics"></div>
           <ul id="fundFlowSignals" class="signal-list"></ul>
         </div>
 

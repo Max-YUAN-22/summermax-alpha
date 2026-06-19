@@ -662,7 +662,7 @@ function renderLlmAnalysis(llmAnalysis) {
   }
 
   if (!llmAnalysis) {
-    llmOutputEl.textContent = t("unknownError");
+    llmOutputEl.textContent = t("noAnalysis");
     return;
   }
 
@@ -1171,7 +1171,7 @@ async function analyzeStock() {
       renderLlmAnalysis({ status: "error", content: { detail: llmData.detail || t("unknownError") } });
     }
   } catch {
-    renderLlmAnalysis(null);
+    llmOutputEl.textContent = currentLang === "zh" ? "AI 分析请求失败，技术数据已正常加载。" : "AI analysis failed; technical data loaded.";
   }
 }
 
@@ -1281,9 +1281,12 @@ refreshWatchlist();
 loadMarketQuicklists();
 checkGptStatus();
 
-// Auto-analyze if URL contains ?code=XXXXXX (e.g. linked from scan page)
+// Auto-analyze on page load so users see live data immediately, not placeholders.
+// Priority: URL ?code= param → last viewed stock → default 300059
 const urlCode = new URLSearchParams(location.search).get("code");
-if (urlCode && /^\d{6}$/.test(urlCode)) {
-  stockCodeInput.value = urlCode;
+const lastCode = localStorage.getItem("summermax-alpha-last-code");
+const autoCode = (urlCode || lastCode || "300059").trim();
+if (/^\d{6}$/.test(autoCode)) {
+  stockCodeInput.value = autoCode;
   analyzeStock();
 }
