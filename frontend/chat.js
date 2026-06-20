@@ -7,6 +7,53 @@ function getApiBase() {
   return (saved || DEFAULT_API_BASE).trim().replace(/\/+$/, "");
 }
 
+function getToken() {
+  return localStorage.getItem("summermax-token") || "";
+}
+
+function getAuthHeaders() {
+  const token = getToken();
+  return token ? { "Authorization": `Bearer ${token}` } : {};
+}
+
+// If backend requires auth and we're not logged in, redirect
+async function checkAuth() {
+  const token = getToken();
+  if (!token) return; // no token → server will 401 on /chat if REQUIRE_AUTH is on; let user try first
+
+  // Validate token silently; if 401 clear and redirect
+  try {
+    const res = await fetch(`${getApiBase()}/auth/me`, {
+      headers: { "Authorization": `Bearer ${token}` },
+    });
+    if (res.status === 401) {
+      localStorage.removeItem("summermax-token");
+      localStorage.removeItem("summermax-email");
+      window.location.href = "auth.html";
+    } else if (res.ok) {
+      const data = await res.json();
+      renderUserBadge(data.email, data.role);
+    }
+  } catch { /* network error, continue */ }
+}
+
+function renderUserBadge(email, role) {
+  const badge = document.getElementById("userBadge");
+  if (!badge) return;
+  const label = role === "admin" ? "管理员" : "用户";
+  badge.innerHTML = `
+    <span class="user-email">${email}</span>
+    <span class="user-role ${role === "admin" ? "admin" : ""}">${label}</span>
+    <button class="logout-btn" id="logoutBtn">退出</button>
+  `;
+  document.getElementById("logoutBtn").addEventListener("click", () => {
+    localStorage.removeItem("summermax-token");
+    localStorage.removeItem("summermax-email");
+    localStorage.removeItem("summermax-role");
+    window.location.href = "auth.html";
+  });
+}
+
 function chgClass(v) {
   const n = Number(v);
   return Number.isNaN(n) ? "" : n >= 0 ? "up" : "down";
@@ -420,7 +467,7 @@ async function sendMessage(text) {
     const apiBase = getApiBase();
     const response = await fetch(`${apiBase}/chat`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
       body: JSON.stringify({
         message: text,
         history: history.slice(-12).map((h) => ({ role: h.role, content: h.content })),
@@ -428,6 +475,11 @@ async function sendMessage(text) {
       }),
     });
     const data = await response.json();
+    if (response.status === 401) {
+      thinkEl.remove();
+      window.location.href = "auth.html";
+      return;
+    }
     const reply = response.ok ? (data.content || "无法获取回复") : (data.detail || "请求失败");
     thinkEl.remove();
     const replyTs = Date.now();
@@ -487,6 +539,7 @@ document.querySelectorAll(".suggestion-chip").forEach((chip) => {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
+checkAuth();
 renderMessages();
 loadMarketBar();
 initMatrix();

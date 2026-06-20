@@ -1,13 +1,20 @@
+import hashlib
 import json
 import os
 import re
+import secrets
+import smtplib
+import sqlite3
 from datetime import datetime, timedelta, timezone
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from typing import Any, Dict, List, Optional
 
+import jwt as pyjwt
 import akshare as ak
 import pandas as pd
 import requests
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -47,6 +54,157 @@ NO_CACHE_HEADERS = {
     "Expires": "0",
 }
 
+# ── Auth constants ────────────────────────────────────────────────────────────
+
+DB_PATH = os.path.join(BACKEND_DIR, "summermax.db")
+JWT_SECRET = os.getenv("JWT_SECRET", "summermax-dev-secret-2026")
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRE_DAYS = 7
+REQUIRE_AUTH = os.getenv("REQUIRE_AUTH", "false").lower() == "true"
+
+# ── Database ──────────────────────────────────────────────────────────────────
+
+def get_db() -> sqlite3.Connection:
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def init_db() -> None:
+    conn = get_db()
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS users (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            email        TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            role         TEXT NOT NULL DEFAULT 'user',
+            is_verified  INTEGER NOT NULL DEFAULT 1,
+            created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS verification_codes (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            email      TEXT NOT NULL,
+            code       TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            used       INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+    """)
+    conn.commit()
+
+    # Seed admin accounts from env vars
+    for i in (1, 2):
+        email = os.getenv(f"ADMIN_EMAIL_{i}", "").strip().lower()
+        password = os.getenv(f"ADMIN_PASSWORD_{i}", "").strip()
+        if email and password:
+            pw_hash = _hash_password(password)
+            try:
+                conn.execute(
+                    "INSERT OR IGNORE INTO users (email, password_hash, role) VALUES (?, ?, 'admin')",
+                    (email, pw_hash),
+                )
+                conn.commit()
+            except Exception:
+                pass
+
+    conn.close()
+
+
+# ── Auth helpers ──────────────────────────────────────────────────────────────
+
+def _hash_password(password: str) -> str:
+    salt = secrets.token_hex(32)
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 260_000)
+    return f"{salt}${dk.hex()}"
+
+
+def _verify_password(password: str, stored: str) -> bool:
+    try:
+        salt, dk_hex = stored.split("$", 1)
+        dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 260_000)
+        return secrets.compare_digest(dk.hex(), dk_hex)
+    except Exception:
+        return False
+
+
+def _create_token(email: str, role: str) -> str:
+    payload = {
+        "sub": email,
+        "role": role,
+        "exp": datetime.now(tz=SHANGHAI_TZ) + timedelta(days=JWT_EXPIRE_DAYS),
+    }
+    return pyjwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+def _decode_token(token: str) -> Optional[Dict[str, Any]]:
+    try:
+        return pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except Exception:
+        return None
+
+
+def _get_token_from_header(authorization: Optional[str]) -> Optional[Dict[str, Any]]:
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    return _decode_token(authorization[7:])
+
+
+def _send_verification_email(to_email: str, code: str) -> bool:
+    host = os.getenv("SMTP_HOST", "")
+    port = int(os.getenv("SMTP_PORT", "587"))
+    user = os.getenv("SMTP_USER", "")
+    password = os.getenv("SMTP_PASSWORD", "")
+    from_name = os.getenv("SMTP_FROM_NAME", "SummerMax Alpha")
+
+    if not host or not user:
+        return False
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = f"【SummerMax Alpha】注册验证码 {code}"
+    msg["From"] = f"{from_name} <{user}>"
+    msg["To"] = to_email
+    body = (
+        f"您好！\n\n"
+        f"您的 SummerMax Alpha 注册验证码是：\n\n"
+        f"    {code}\n\n"
+        f"验证码 10 分钟内有效，请勿泄露给他人。\n\n"
+        f"如非本人操作，请忽略此邮件。\n\n"
+        f"— SummerMax Alpha 团队"
+    )
+    msg.attach(MIMEText(body, "plain", "utf-8"))
+
+    try:
+        with smtplib.SMTP(host, port, timeout=10) as server:
+            server.ehlo()
+            server.starttls()
+            server.login(user, password)
+            server.sendmail(user, [to_email], msg.as_string())
+        return True
+    except Exception:
+        return False
+
+
+# ── Auth Pydantic models ──────────────────────────────────────────────────────
+
+class SendCodeRequest(BaseModel):
+    email: str
+
+
+class RegisterRequest(BaseModel):
+    email: str
+    code: str
+    password: str
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+# ── Auth endpoints ────────────────────────────────────────────────────────────
+
+
 app = FastAPI(
     title=APP_NAME,
     description="Realtime A-share quote analysis API with rule-based and GPT-ready interpretation.",
@@ -64,6 +222,9 @@ app.add_middleware(
 if os.path.isdir(FRONTEND_DIR):
     app.mount("/app", StaticFiles(directory=FRONTEND_DIR), name="frontend")
 
+# Initialize DB (creates tables + seeds admin accounts)
+init_db()
+
 
 @app.middleware("http")
 async def disable_frontend_caching(request: Request, call_next):
@@ -73,6 +234,103 @@ async def disable_frontend_caching(request: Request, call_next):
         for key, value in NO_CACHE_HEADERS.items():
             response.headers[key] = value
     return response
+
+
+# ── Auth routes ───────────────────────────────────────────────────────────────
+
+@app.post("/auth/send-code")
+def auth_send_code(payload: SendCodeRequest) -> Dict[str, Any]:
+    email = payload.email.strip().lower()
+    if not email or "@" not in email or "." not in email.split("@")[-1]:
+        raise HTTPException(status_code=400, detail="邮箱格式不正确")
+
+    conn = get_db()
+    existing = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+    if existing:
+        conn.close()
+        raise HTTPException(status_code=409, detail="该邮箱已注册，请直接登录")
+
+    code = str(secrets.randbelow(1_000_000)).zfill(6)
+    expires_at = (datetime.now(tz=SHANGHAI_TZ) + timedelta(minutes=10)).isoformat()
+
+    # Invalidate all previous codes for this email
+    conn.execute("UPDATE verification_codes SET used = 1 WHERE email = ?", (email,))
+    conn.execute(
+        "INSERT INTO verification_codes (email, code, expires_at) VALUES (?, ?, ?)",
+        (email, code, expires_at),
+    )
+    conn.commit()
+    conn.close()
+
+    smtp_configured = bool(os.getenv("SMTP_HOST") and os.getenv("SMTP_USER"))
+    if smtp_configured:
+        sent = _send_verification_email(email, code)
+        if not sent:
+            raise HTTPException(status_code=500, detail="邮件发送失败，请联系管理员")
+        return {"message": "验证码已发送到您的邮箱，10 分钟内有效"}
+    else:
+        # Dev mode: return code directly
+        return {"message": f"[开发模式] 验证码：{code}（SMTP 未配置，仅供测试）", "dev_code": code}
+
+
+@app.post("/auth/register")
+def auth_register(payload: RegisterRequest) -> Dict[str, Any]:
+    email = payload.email.strip().lower()
+    code = payload.code.strip()
+
+    if len(payload.password) < 8:
+        raise HTTPException(status_code=400, detail="密码至少需要 8 位")
+
+    conn = get_db()
+    now_iso = datetime.now(tz=SHANGHAI_TZ).isoformat()
+    vc = conn.execute(
+        "SELECT id FROM verification_codes WHERE email = ? AND code = ? AND used = 0 AND expires_at > ? ORDER BY id DESC LIMIT 1",
+        (email, code, now_iso),
+    ).fetchone()
+    if not vc:
+        conn.close()
+        raise HTTPException(status_code=400, detail="验证码错误或已过期，请重新获取")
+
+    conn.execute("UPDATE verification_codes SET used = 1 WHERE id = ?", (vc["id"],))
+    pw_hash = _hash_password(payload.password)
+    try:
+        conn.execute(
+            "INSERT INTO users (email, password_hash, role, is_verified) VALUES (?, ?, 'user', 1)",
+            (email, pw_hash),
+        )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.close()
+        raise HTTPException(status_code=409, detail="该邮箱已注册，请直接登录")
+    conn.close()
+
+    token = _create_token(email, "user")
+    return {"token": token, "email": email, "role": "user", "message": "注册成功，欢迎使用 SummerMax Alpha"}
+
+
+@app.post("/auth/login")
+def auth_login(payload: LoginRequest) -> Dict[str, Any]:
+    email = payload.email.strip().lower()
+
+    conn = get_db()
+    user = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+    conn.close()
+
+    if not user or not _verify_password(payload.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="邮箱或密码错误")
+
+    token = _create_token(email, user["role"])
+    return {"token": token, "email": email, "role": user["role"], "message": "登录成功"}
+
+
+@app.get("/auth/me")
+def auth_me(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+    claims = _get_token_from_header(authorization)
+    if not claims:
+        raise HTTPException(status_code=401, detail="未登录或 Token 已过期")
+    return {"email": claims["sub"], "role": claims.get("role", "user")}
+
+
 
 DEFAULT_HEADERS = {
     "User-Agent": (
@@ -2204,7 +2462,13 @@ class ChatPayload(BaseModel):
 
 
 @app.post("/chat")
-def open_chat(payload: ChatPayload) -> Dict[str, Any]:
+def open_chat(payload: ChatPayload, authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+    # If REQUIRE_AUTH is enabled, validate JWT
+    if REQUIRE_AUTH:
+        claims = _get_token_from_header(authorization)
+        if not claims:
+            raise HTTPException(status_code=401, detail="请先登录再使用 AI 分析师")
+
     message = payload.message.strip()
     if not message:
         raise HTTPException(status_code=400, detail="Message cannot be empty.")

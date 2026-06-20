@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SummerMax Alpha · 登录 / 注册</title>
+    <style>
+      :root {
+        --bg: #07111f;
+        --panel: rgba(10, 22, 38, 0.95);
+        --line: rgba(132, 157, 189, 0.15);
+        --text: #edf4ff;
+        --muted: #8ea3bd;
+        --muted-2: #5a7490;
+        --accent: #66d1ff;
+        --bull: #2ed09a;
+        --bear: #ff6b7e;
+      }
+
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      html, body {
+        min-height: 100%;
+        color: var(--text);
+        font-family: "PingFang SC", "Noto Sans SC", "Avenir Next", sans-serif;
+        font-size: 14px;
+        background: #07111f;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+
+      /* Background glow */
+      body::before {
+        content: "";
+        position: fixed;
+        top: -10%;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 700px;
+        height: 400px;
+        background: radial-gradient(ellipse, rgba(102,209,255,0.06) 0%, transparent 70%);
+        pointer-events: none;
+      }
+
+      /* ── Brand header ── */
+      .brand {
+        text-align: center;
+        margin-bottom: 28px;
+      }
+
+      .brand-logo {
+        display: inline-grid;
+        place-items: center;
+        width: 52px; height: 52px;
+        border-radius: 14px;
+        background: linear-gradient(135deg, rgba(102,209,255,0.22), rgba(36,163,135,0.28));
+        border: 1px solid rgba(102,209,255,0.25);
+        font-size: 1.2rem; font-weight: 900;
+        color: var(--accent);
+        margin-bottom: 12px;
+      }
+
+      .brand-title {
+        font-size: 1.3rem; font-weight: 800;
+        letter-spacing: -0.02em;
+      }
+
+      .brand-sub {
+        font-size: 0.8rem; color: var(--muted-2);
+        margin-top: 4px;
+      }
+
+      /* ── Card ── */
+      .card {
+        width: 100%;
+        max-width: 400px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        padding: 28px 28px 24px;
+        backdrop-filter: blur(12px);
+        box-shadow: 0 24px 60px rgba(0,0,0,0.4);
+      }
+
+      /* ── Tabs ── */
+      .tabs {
+        display: flex;
+        background: rgba(0,0,0,0.25);
+        border-radius: 10px;
+        padding: 3px;
+        margin-bottom: 24px;
+      }
+
+      .tab {
+        flex: 1;
+        padding: 8px;
+        border: none; border-radius: 8px;
+        background: transparent; color: var(--muted);
+        font-family: inherit; font-size: 0.88rem; font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .tab.active {
+        background: rgba(102,209,255,0.14);
+        color: var(--accent);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      }
+
+      /* ── Form ── */
+      .form-group { margin-bottom: 14px; }
+
+      label {
+        display: block;
+        font-size: 0.78rem; color: var(--muted-2);
+        margin-bottom: 6px; font-weight: 600;
+        letter-spacing: 0.03em;
+      }
+
+      input[type="email"],
+      input[type="password"],
+      input[type="text"] {
+        width: 100%;
+        background: rgba(10, 22, 38, 0.8);
+        border: 1px solid rgba(132,157,189,0.2);
+        border-radius: 10px;
+        color: var(--text);
+        font-family: inherit; font-size: 0.92rem;
+        padding: 10px 14px;
+        outline: none;
+        transition: border-color 0.2s;
+      }
+
+      input:focus { border-color: rgba(102,209,255,0.4); }
+      input::placeholder { color: var(--muted-2); }
+      input:disabled { opacity: 0.5; cursor: not-allowed; }
+
+      /* ── Code row ── */
+      .code-row { display: flex; gap: 8px; }
+      .code-row input { flex: 1; }
+
+      .send-code-btn {
+        padding: 10px 14px;
+        border-radius: 10px;
+        border: 1px solid rgba(102,209,255,0.25);
+        background: rgba(102,209,255,0.1);
+        color: var(--accent);
+        font-family: inherit; font-size: 0.8rem; font-weight: 700;
+        cursor: pointer; white-space: nowrap;
+        transition: background 0.15s;
+      }
+      .send-code-btn:hover:not(:disabled) { background: rgba(102,209,255,0.2); }
+      .send-code-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+      /* ── Submit button ── */
+      .submit-btn {
+        width: 100%;
+        margin-top: 6px;
+        padding: 12px;
+        border-radius: 11px; border: none;
+        background: linear-gradient(135deg, rgba(102,209,255,0.3), rgba(36,163,135,0.26));
+        color: var(--text);
+        font-family: inherit; font-size: 0.96rem; font-weight: 700;
+        cursor: pointer;
+        transition: background 0.2s, opacity 0.2s;
+        border: 1px solid rgba(102,209,255,0.25);
+      }
+      .submit-btn:hover:not(:disabled) { background: linear-gradient(135deg, rgba(102,209,255,0.44), rgba(36,163,135,0.38)); }
+      .submit-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+      /* ── Status message ── */
+      .status {
+        min-height: 22px;
+        margin-top: 12px;
+        font-size: 0.8rem;
+        text-align: center;
+        border-radius: 8px;
+        padding: 0 4px;
+      }
+
+      .status.ok { color: var(--bull); }
+      .status.err { color: var(--bear); }
+      .status.info { color: var(--muted); }
+
+      /* ── Divider ── */
+      .divider {
+        display: flex; align-items: center; gap: 10px;
+        margin: 18px 0 14px;
+        color: var(--muted-2); font-size: 0.72rem;
+      }
+      .divider::before, .divider::after {
+        content: ""; flex: 1;
+        height: 1px; background: var(--line);
+      }
+
+      /* ── Password strength ── */
+      .pw-hint {
+        font-size: 0.72rem; color: var(--muted-2);
+        margin-top: 4px;
+      }
+
+      /* ── Step indicator ── */
+      .step-dot {
+        display: flex; justify-content: center; gap: 6px; margin-bottom: 18px;
+      }
+      .dot {
+        width: 6px; height: 6px; border-radius: 50%;
+        background: rgba(132,157,189,0.25);
+        transition: background 0.2s;
+      }
+      .dot.active { background: var(--accent); }
+    </style>
+  </head>
+  <body>
+
+    <div class="brand">
+      <div class="brand-logo">Sα</div>
+      <div class="brand-title">SummerMax Alpha</div>
+      <div class="brand-sub">专业 A 股 AI 分析平台</div>
+    </div>
+
+    <div class="card">
+      <div class="tabs">
+        <button class="tab active" id="loginTab">登录</button>
+        <button class="tab" id="registerTab">注册</button>
+      </div>
+
+      <!-- Login form -->
+      <div id="loginForm">
+        <div class="form-group">
+          <label>邮箱</label>
+          <input type="email" id="loginEmail" placeholder="your@email.com" autocomplete="email" />
+        </div>
+        <div class="form-group">
+          <label>密码</label>
+          <input type="password" id="loginPassword" placeholder="请输入密码" autocomplete="current-password" />
+        </div>
+        <button class="submit-btn" id="loginBtn">登录</button>
+        <div class="status" id="loginStatus"></div>
+      </div>
+
+      <!-- Register form -->
+      <div id="registerForm" style="display:none">
+        <div class="step-dot">
+          <div class="dot active" id="dot1"></div>
+          <div class="dot" id="dot2"></div>
+        </div>
+
+        <!-- Step 1: Email + send code -->
+        <div id="regStep1">
+          <div class="form-group">
+            <label>邮箱地址</label>
+            <div class="code-row">
+              <input type="email" id="regEmail" placeholder="your@email.com" autocomplete="email" />
+              <button class="send-code-btn" id="sendCodeBtn">发送验证码</button>
+            </div>
+          </div>
+          <div class="status" id="codeStatus"></div>
+        </div>
+
+        <!-- Step 2: Code + password -->
+        <div id="regStep2" style="display:none">
+          <div class="form-group">
+            <label>验证码（已发至邮箱）</label>
+            <input type="text" id="regCode" placeholder="6 位数字验证码" maxlength="6" inputmode="numeric" />
+          </div>
+          <div class="form-group">
+            <label>设置密码</label>
+            <input type="password" id="regPassword" placeholder="至少 8 位" autocomplete="new-password" />
+            <div class="pw-hint" id="pwHint"></div>
+          </div>
+          <div class="form-group">
+            <label>确认密码</label>
+            <input type="password" id="regPasswordConfirm" placeholder="再次输入密码" autocomplete="new-password" />
+          </div>
+          <button class="submit-btn" id="registerBtn">完成注册</button>
+          <div class="status" id="registerStatus"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const DEFAULT_API_BASE = "https://summermax-alpha-api.onrender.com";
+
+      function getApiBase() {
+        const saved = localStorage.getItem("summermax-alpha-api-base");
+        return (saved || DEFAULT_API_BASE).trim().replace(/\/+$/, "");
+      }
+
+      function setStatus(el, msg, type) {
+        el.textContent = msg;
+        el.className = `status ${type}`;
+      }
+
+      // ── Tab switching ──────────────────────────────────────────────────────
+
+      const loginTab = document.getElementById("loginTab");
+      const registerTab = document.getElementById("registerTab");
+      const loginFormEl = document.getElementById("loginForm");
+      const registerFormEl = document.getElementById("registerForm");
+
+      loginTab.addEventListener("click", () => {
+        loginTab.classList.add("active");
+        registerTab.classList.remove("active");
+        loginFormEl.style.display = "";
+        registerFormEl.style.display = "none";
+      });
+
+      registerTab.addEventListener("click", () => {
+        registerTab.classList.add("active");
+        loginTab.classList.remove("active");
+        registerFormEl.style.display = "";
+        loginFormEl.style.display = "none";
+      });
+
+      // ── Login ──────────────────────────────────────────────────────────────
+
+      const loginBtn = document.getElementById("loginBtn");
+      const loginStatus = document.getElementById("loginStatus");
+
+      async function doLogin() {
+        const email = document.getElementById("loginEmail").value.trim();
+        const password = document.getElementById("loginPassword").value;
+        if (!email || !password) { setStatus(loginStatus, "请填写邮箱和密码", "err"); return; }
+
+        loginBtn.disabled = true;
+        loginBtn.textContent = "登录中…";
+        setStatus(loginStatus, "", "");
+
+        try {
+          const res = await fetch(`${getApiBase()}/auth/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, password }),
+          });
+          const data = await res.json();
+          if (!res.ok) { setStatus(loginStatus, data.detail || "登录失败", "err"); return; }
+
+          localStorage.setItem("summermax-token", data.token);
+          localStorage.setItem("summermax-email", data.email);
+          localStorage.setItem("summermax-role", data.role);
+          setStatus(loginStatus, data.message || "登录成功", "ok");
+          setTimeout(() => { window.location.href = "chat.html"; }, 600);
+        } catch {
+          setStatus(loginStatus, "网络错误，请检查连接", "err");
+        } finally {
+          loginBtn.disabled = false;
+          loginBtn.textContent = "登录";
+        }
+      }
+
+      loginBtn.addEventListener("click", doLogin);
+      document.getElementById("loginPassword").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") doLogin();
+      });
+
+      // ── Register: send code ────────────────────────────────────────────────
+
+      const sendCodeBtn = document.getElementById("sendCodeBtn");
+      const codeStatus = document.getElementById("codeStatus");
+      let countdownTimer = null;
+
+      async function doSendCode() {
+        const email = document.getElementById("regEmail").value.trim();
+        if (!email || !email.includes("@")) { setStatus(codeStatus, "请输入正确的邮箱地址", "err"); return; }
+
+        sendCodeBtn.disabled = true;
+        setStatus(codeStatus, "发送中…", "info");
+
+        try {
+          const res = await fetch(`${getApiBase()}/auth/send-code`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email }),
+          });
+          const data = await res.json();
+          if (!res.ok) { setStatus(codeStatus, data.detail || "发送失败", "err"); sendCodeBtn.disabled = false; return; }
+
+          setStatus(codeStatus, data.message, "ok");
+          document.getElementById("regStep2").style.display = "";
+          document.getElementById("dot2").classList.add("active");
+          document.getElementById("regEmail").disabled = true;
+
+          // Countdown
+          let secs = 60;
+          sendCodeBtn.textContent = `${secs}s 后重发`;
+          countdownTimer = setInterval(() => {
+            secs--;
+            if (secs <= 0) {
+              clearInterval(countdownTimer);
+              sendCodeBtn.disabled = false;
+              sendCodeBtn.textContent = "重新发送";
+            } else {
+              sendCodeBtn.textContent = `${secs}s 后重发`;
+            }
+          }, 1000);
+        } catch {
+          setStatus(codeStatus, "网络错误，请重试", "err");
+          sendCodeBtn.disabled = false;
+        }
+      }
+
+      sendCodeBtn.addEventListener("click", doSendCode);
+
+      // Password strength hint
+      document.getElementById("regPassword").addEventListener("input", (e) => {
+        const pw = e.target.value;
+        const hint = document.getElementById("pwHint");
+        if (pw.length === 0) { hint.textContent = ""; return; }
+        if (pw.length < 8) { hint.style.color = "var(--bear)"; hint.textContent = "密码太短（至少 8 位）"; }
+        else if (pw.length < 12) { hint.style.color = "var(--muted)"; hint.textContent = "强度一般"; }
+        else { hint.style.color = "var(--bull)"; hint.textContent = "强度良好 ✓"; }
+      });
+
+      // ── Register: submit ───────────────────────────────────────────────────
+
+      const registerBtn = document.getElementById("registerBtn");
+      const registerStatus = document.getElementById("registerStatus");
+
+      async function doRegister() {
+        const email = document.getElementById("regEmail").value.trim();
+        const code = document.getElementById("regCode").value.trim();
+        const password = document.getElementById("regPassword").value;
+        const confirm = document.getElementById("regPasswordConfirm").value;
+
+        if (!code || code.length !== 6) { setStatus(registerStatus, "请输入 6 位验证码", "err"); return; }
+        if (password.length < 8) { setStatus(registerStatus, "密码至少需要 8 位", "err"); return; }
+        if (password !== confirm) { setStatus(registerStatus, "两次密码不一致", "err"); return; }
+
+        registerBtn.disabled = true;
+        registerBtn.textContent = "注册中…";
+        setStatus(registerStatus, "", "");
+
+        try {
+          const res = await fetch(`${getApiBase()}/auth/register`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, code, password }),
+          });
+          const data = await res.json();
+          if (!res.ok) { setStatus(registerStatus, data.detail || "注册失败", "err"); return; }
+
+          localStorage.setItem("summermax-token", data.token);
+          localStorage.setItem("summermax-email", data.email);
+          localStorage.setItem("summermax-role", data.role);
+          setStatus(registerStatus, data.message || "注册成功！", "ok");
+          setTimeout(() => { window.location.href = "chat.html"; }, 800);
+        } catch {
+          setStatus(registerStatus, "网络错误，请重试", "err");
+        } finally {
+          registerBtn.disabled = false;
+          registerBtn.textContent = "完成注册";
+        }
+      }
+
+      registerBtn.addEventListener("click", doRegister);
+
+      // Auto-submit when 6-digit code is entered
+      document.getElementById("regCode").addEventListener("input", (e) => {
+        if (e.target.value.length === 6) registerBtn.focus();
+      });
+
+      // ── Check if already logged in ────────────────────────────────────────
+
+      const token = localStorage.getItem("summermax-token");
+      if (token) {
+        // Verify token is still valid
+        fetch(`${getApiBase()}/auth/me`, {
+          headers: { "Authorization": `Bearer ${token}` },
+        }).then((r) => {
+          if (r.ok) window.location.href = "chat.html";
+        }).catch(() => {});
+      }
+    </script>
+  </body>
+</html>

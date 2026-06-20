@@ -76,6 +76,40 @@
 
       .topbar-spacer { flex: 1; }
 
+      .user-badge {
+        display: flex; align-items: center; gap: 8px;
+        flex-shrink: 0;
+      }
+
+      .user-email {
+        font-size: 0.76rem; color: var(--muted);
+        max-width: 160px; overflow: hidden;
+        text-overflow: ellipsis; white-space: nowrap;
+      }
+
+      .user-role {
+        font-size: 0.66rem; padding: 2px 7px;
+        border-radius: 5px;
+        background: rgba(102,209,255,0.1);
+        border: 1px solid rgba(102,209,255,0.15);
+        color: var(--muted-2);
+      }
+
+      .user-role.admin {
+        background: rgba(255,195,50,0.12);
+        border-color: rgba(255,195,50,0.2);
+        color: #ffc332;
+      }
+
+      .logout-btn {
+        padding: 4px 10px; border-radius: 7px;
+        border: 1px solid rgba(132,157,189,0.2);
+        background: transparent; color: var(--muted-2);
+        font-size: 0.74rem; cursor: pointer;
+        transition: color 0.15s, border-color 0.15s;
+      }
+      .logout-btn:hover { color: var(--bear); border-color: rgba(255,107,126,0.3); }
+
       .clear-btn {
         padding: 5px 12px; border-radius: 8px;
         border: 1px solid rgba(132,157,189,0.2);
@@ -395,6 +429,7 @@
         <a href="chat.html" class="active">AI 分析师</a>
       </nav>
       <div class="topbar-spacer"></div>
+      <div class="user-badge" id="userBadge"></div>
       <button class="clear-btn" id="clearBtn">清空对话</button>
     </header>
 
