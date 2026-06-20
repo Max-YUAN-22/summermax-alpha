@@ -1,6 +1,8 @@
 const DEFAULT_API_BASE = "https://summermax-alpha-api.onrender.com";
-const FETCH_TIMEOUT_MS = 25000;
-const MAX_RETRIES = 2;
+const EM_URL = "https://82.push2.eastmoney.com/api/qt/clist/get";
+const EM_HEADERS = {
+  "Referer": "https://quote.eastmoney.com/center/boardlist.html",
+};
 
 function getApiBase() {
   const saved = localStorage.getItem("summermax-alpha-api-base");
@@ -31,30 +33,21 @@ function fmtAmount(value) {
   return n.toFixed(0);
 }
 
-async function fetchWithTimeout(url, options = {}) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, { ...options, signal: controller.signal });
-    return res;
-  } finally {
-    clearTimeout(timer);
-  }
-}
+// Cache board code (BK...) by name, populated when sector list loads
+const sectorCodeMap = {};
 
-async function fetchWithRetry(url, retries = MAX_RETRIES) {
-  let lastErr;
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      return await fetchWithTimeout(url);
-    } catch (err) {
-      lastErr = err;
-      if (attempt < retries) {
-        await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
-      }
-    }
-  }
-  throw lastErr;
+async function emFetch(params) {
+  const url = new URL(EM_URL);
+  const base = {
+    pn: "1", pz: "100", po: "1", np: "1",
+    ut: "bd1d9ddb04089700cf9c27f6f7426281",
+    fltt: "2", invt: "2", fid: "f3",
+  };
+  Object.entries({ ...base, ...params }).forEach(([k, v]) => url.searchParams.set(k, v));
+  const res = await fetch(url.toString(), { headers: EM_HEADERS });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  return (data.data || {}).diff || [];
 }
 
 const sectorListEl = document.getElementById("sectorList");
@@ -67,36 +60,45 @@ const stockLoadingEl = document.getElementById("stockLoading");
 let activeSectorRow = null;
 
 async function loadSectors() {
-  const apiBase = getApiBase();
   if (sectorLoadingEl) sectorLoadingEl.style.display = "block";
   if (sectorListEl) sectorListEl.innerHTML = "";
 
   try {
-    const res = await fetchWithRetry(`${apiBase}/market/sectors`);
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || "Failed to load sectors");
+    const diffs = await emFetch({
+      fs: "m:90 t:2 f:!50",
+      fields: "f3,f6,f12,f14,f104,f105,f128,f136",
+    });
 
-    const sectors = data.sectors || [];
     if (sectorLoadingEl) sectorLoadingEl.style.display = "none";
 
-    if (!sectors.length) {
-      if (sectorListEl) sectorListEl.innerHTML = `<div class="empty-note">暂无板块数据</div>`;
+    if (!diffs.length) {
+      if (sectorListEl) sectorListEl.innerHTML = `<div class="empty-note">暂无板块数据（非交易时段可能无数据）</div>`;
       return;
     }
 
-    sectorListEl.innerHTML = sectors.map((s, i) => {
-      const cls = chgClass(s.change_percent);
+    diffs.forEach((item) => {
+      const name = String(item.f14 || "");
+      const code = String(item.f12 || "");
+      if (name && code) sectorCodeMap[name] = code;
+    });
+
+    const sorted = [...diffs].sort((a, b) => (Number(b.f3) || 0) - (Number(a.f3) || 0));
+
+    sectorListEl.innerHTML = sorted.map((item, i) => {
+      const name = String(item.f14 || "");
+      const cls = chgClass(item.f3);
+      const leaderCls = chgClass(item.f136);
       return `
-        <button type="button" class="sector-row" data-sector="${encodeURIComponent(s.name)}" data-index="${i}">
+        <button type="button" class="sector-row" data-sector="${encodeURIComponent(name)}">
           <span class="sr-rank">${i + 1}</span>
-          <span class="sr-name">${s.name}</span>
-          <span class="sr-chg ${cls}">${chgText(s.change_percent)}</span>
-          <span class="sr-amount">${fmtAmount(s.amount)}</span>
+          <span class="sr-name">${name}</span>
+          <span class="sr-chg ${cls}">${chgText(item.f3)}</span>
+          <span class="sr-amount">${fmtAmount(item.f6)}</span>
           <span class="sr-counts">
-            <span class="up">↑${s.rise_count}</span>
-            <span class="down"> ↓${s.fall_count}</span>
+            <span class="up">↑${item.f104 || 0}</span>
+            <span class="down"> ↓${item.f105 || 0}</span>
           </span>
-          <span class="sr-leader ${chgClass(s.leader_change)}">${s.leader || ""} ${s.leader_change != null ? chgText(s.leader_change) : ""}</span>
+          <span class="sr-leader ${leaderCls}">${item.f128 || ""} ${item.f136 != null ? chgText(item.f136) : ""}</span>
           <span class="sr-arrow">›</span>
         </button>
       `;
@@ -105,32 +107,28 @@ async function loadSectors() {
     sectorListEl.addEventListener("click", (e) => {
       const btn = e.target.closest(".sector-row");
       if (!btn) return;
-
       if (activeSectorRow) activeSectorRow.classList.remove("active");
       btn.classList.add("active");
       activeSectorRow = btn;
-
-      const name = decodeURIComponent(btn.dataset.sector || "");
-      loadSectorStocks(name);
+      loadSectorStocks(decodeURIComponent(btn.dataset.sector || ""));
     });
+
   } catch (err) {
     if (sectorLoadingEl) sectorLoadingEl.style.display = "none";
-    const msg = err.name === "AbortError"
-      ? "请求超时，后端正在唤醒中（免费服务首次启动约需 30–60 秒）。"
-      : `加载失败（${err.message}），后端可能正在唤醒中。`;
     if (sectorListEl) sectorListEl.innerHTML = `
       <div class="empty-note">
-        <p>${msg}</p>
+        <p>加载失败：${err.message}</p>
         <button type="button" class="btn-retry" id="retrySectorsBtn">重新加载</button>
       </div>`;
-    const retryBtn = document.getElementById("retrySectorsBtn");
-    if (retryBtn) retryBtn.addEventListener("click", loadSectors);
+    const btn = document.getElementById("retrySectorsBtn");
+    if (btn) btn.addEventListener("click", loadSectors);
   }
 }
 
 async function loadSectorStocks(sectorName) {
-  const apiBase = getApiBase();
-  if (stockPanelEl) { stockPanelEl.style.display = "flex"; }
+  const boardCode = sectorCodeMap[sectorName];
+
+  if (stockPanelEl) stockPanelEl.style.display = "flex";
   const placeholder = document.getElementById("stockPlaceholder");
   if (placeholder) placeholder.style.display = "none";
   if (stockPanelTitleEl) stockPanelTitleEl.textContent = sectorName;
@@ -138,17 +136,21 @@ async function loadSectorStocks(sectorName) {
   if (stockLoadingEl) stockLoadingEl.style.display = "block";
 
   try {
-    const res = await fetchWithRetry(`${apiBase}/market/sector/stocks?name=${encodeURIComponent(sectorName)}`);
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || "Failed to load stocks");
+    if (!boardCode) throw new Error("未找到板块代码，请重新加载板块列表");
+
+    const diffs = await emFetch({
+      fs: `b:${boardCode}+f:!50+s:z`,
+      fields: "f2,f3,f5,f6,f8,f12,f14",
+    });
 
     if (stockLoadingEl) stockLoadingEl.style.display = "none";
-    const stocks = data.stocks || [];
 
-    if (!stocks.length) {
+    if (!diffs.length) {
       if (stockTableEl) stockTableEl.innerHTML = `<div class="empty-note">该板块暂无个股数据</div>`;
       return;
     }
+
+    const sorted = [...diffs].sort((a, b) => (Number(b.f3) || 0) - (Number(a.f3) || 0));
 
     stockTableEl.innerHTML = `
       <div class="stock-col-head">
@@ -159,27 +161,27 @@ async function loadSectorStocks(sectorName) {
         <span>换手率</span>
         <span></span>
       </div>
-      ${stocks.map((s) => {
-        const cls = chgClass(s.change_percent);
+      ${sorted.map((item) => {
+        const cls = chgClass(item.f3);
+        const code = String(item.f12 || "").padStart(6, "0");
         return `
           <div class="stock-row">
             <div class="sr2-id">
-              <span class="sr2-code">${s.code}</span>
-              <span class="sr2-name">${s.name}</span>
+              <span class="sr2-code">${code}</span>
+              <span class="sr2-name">${item.f14 || ""}</span>
             </div>
-            <span class="sr2-price ${cls}">${fmt(s.price)}</span>
-            <span class="sr2-chg ${cls}">${chgText(s.change_percent)}</span>
-            <span class="sr2-amount">${fmtAmount(s.amount)}</span>
-            <span class="sr2-turn">${s.turnover_rate != null ? fmt(s.turnover_rate) + "%" : "--"}</span>
-            <a href="workspace.html?code=${s.code}" class="btn-analyze-stock">分析</a>
+            <span class="sr2-price ${cls}">${fmt(item.f2)}</span>
+            <span class="sr2-chg ${cls}">${chgText(item.f3)}</span>
+            <span class="sr2-amount">${fmtAmount(item.f6)}</span>
+            <span class="sr2-turn">${item.f8 != null ? fmt(item.f8) + "%" : "--"}</span>
+            <a href="workspace.html?code=${code}" class="btn-analyze-stock">分析</a>
           </div>
         `;
       }).join("")}
     `;
   } catch (err) {
     if (stockLoadingEl) stockLoadingEl.style.display = "none";
-    const msg = err.name === "AbortError" ? "请求超时，请重试。" : `加载失败：${err.message}`;
-    if (stockTableEl) stockTableEl.innerHTML = `<div class="empty-note">${msg}</div>`;
+    if (stockTableEl) stockTableEl.innerHTML = `<div class="empty-note">加载失败：${err.message}</div>`;
   }
 }
 
