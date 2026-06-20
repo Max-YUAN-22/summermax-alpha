@@ -2237,13 +2237,42 @@ def open_chat(payload: ChatPayload) -> Dict[str, Any]:
     except Exception:
         pass
 
-    # Build system prompt
-    now_str = datetime.now(tz=SHANGHAI_TZ).strftime("%Y-%m-%d %H:%M")
+    # Build system prompt — time-aware trading session context
+    now = datetime.now(tz=SHANGHAI_TZ)
+    now_str = now.strftime("%Y-%m-%d %H:%M")
+    weekday = now.weekday()  # 0=Mon, 6=Sun
+    h, m = now.hour, now.minute
+    is_weekday = 0 <= weekday <= 4
+
+    if is_weekday and ((h == 9 and m >= 30) or (10 <= h < 11) or (h == 11 and m < 30)):
+        session_note = "当前为早盘时段（9:30-11:30）。给出今日早盘可布局的标的，注意不要追高开。"
+    elif is_weekday and (h == 13 or (h == 14 and m < 0)):
+        session_note = "当前为午后开盘时段。分析午后盘面走势延续性，给出下午可操作方向。"
+    elif is_weekday and (h == 14 or (h == 13 and m >= 30)):
+        session_note = (
+            "⚡ 当前为尾盘黄金时段（13:30-15:00）！"
+            "优先筛选今日尾盘适合买入、大概率明日或后日继续上涨的标的。"
+            "买在尾盘、吃隔夜涨幅是核心策略。"
+        )
+    elif is_weekday and h == 15:
+        session_note = "今日收盘。复盘今日格局，给出明日开盘重点关注的标的和布局逻辑。"
+    else:
+        session_note = "当前非交易时段，基于最近交易日数据给出下一交易日开盘关注标的。"
+
     lines = [
         f"你是专业的A股短中线投资分析助手，当前时间 {now_str}（北京时间）。",
+        session_note,
         "你能读取下方今日全部A股实时行情数据，据此给出具体判断。",
-        "推荐要有股票代码、看多逻辑、进场条件、止损位，敢于下结论，不要模糊推辞。",
-        "用中文回答，结构清晰，控制在600字以内。仅供参考，不构成投资建议。",
+        "",
+        "每次推荐股票必须包含以下结构（不能省略）：",
+        "  股票代码 + 名称",
+        "  看多逻辑（产业/资金/技术三选一或组合）",
+        "  建议买入价区间（结合当前价格给具体数字）",
+        "  T+1 目标价 / T+2 目标价（预计涨幅%）",
+        "  止损价位（明确的数字，不能说'跌破均线'这种模糊表述）",
+        "  退出条件（止盈或止损触发后的操作）",
+        "",
+        "用中文回答，结构清晰。仅供参考，不构成投资建议。",
     ]
     if payload.market_context:
         mc = payload.market_context
@@ -2301,7 +2330,7 @@ def open_chat(payload: ChatPayload) -> Dict[str, Any]:
         resp = client.chat.completions.create(
             model=os.getenv("OPENAI_MODEL", DEFAULT_LLM_MODEL),
             messages=messages,
-            max_tokens=1000,
+            max_tokens=1400,
             temperature=0.7,
         )
         reply = resp.choices[0].message.content
