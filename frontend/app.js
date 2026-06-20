@@ -763,13 +763,76 @@ async function loadChartPeriod(period, code = stockCodeInput.value.trim()) {
   }
 
   setActivePeriod(period);
-  try {
-    const response = await fetch(`${apiBase}/chart/multiperiod?code=${encodeURIComponent(code)}&period=${encodeURIComponent(period)}`);
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.detail || t("unknownError"));
+
+  if (period === "daily") {
+    try {
+      const response = await fetch(`${apiBase}/chart/multiperiod?code=${encodeURIComponent(code)}&period=${encodeURIComponent(period)}`);
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.detail || t("unknownError"));
+      }
+      renderChart(data.chart);
+    } catch {
+      renderChart({});
     }
-    renderChart(data.chart);
+    return;
+  }
+
+  // 60 / 15-min: call EastMoney push2his directly (CORS: Access-Control-Allow-Origin: *)
+  try {
+    const klt = period === "60" ? "60" : "15";
+    const market = /^[69]/.test(code) ? "1" : "0";
+    const secid = `${market}.${code}`;
+
+    const today = new Date();
+    const end = today.toISOString().slice(0, 10).replace(/-/g, "");
+    const past = new Date(today);
+    past.setDate(past.getDate() - 10);
+    const beg = past.toISOString().slice(0, 10).replace(/-/g, "");
+
+    const url = new URL("https://push2his.eastmoney.com/api/qt/stock/kline/get");
+    const params = {
+      secid, klt, fqt: "1", beg, end,
+      fields1: "f1,f2,f3,f4,f5,f6",
+      fields2: "f51,f52,f53,f54,f55,f56",
+      lmt: "1000",
+      ut: "fa5fd1943c7b386f172d6893dbfba10b",
+    };
+    Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+
+    const res = await fetch(url.toString(), {
+      headers: { "Referer": "https://quote.eastmoney.com/" },
+    });
+    const data = await res.json();
+    const klines = ((data.data) || {}).klines || [];
+
+    if (!klines.length) {
+      renderChart({});
+      return;
+    }
+
+    const series = klines.map((line) => {
+      const [date, open, close, high, low, volume] = line.split(",");
+      return {
+        date,
+        open: Number(open),
+        close: Number(close),
+        high: Number(high),
+        low: Number(low),
+        volume: Number(volume),
+      };
+    });
+
+    for (let i = 0; i < series.length; i++) {
+      if (i >= 4) {
+        series[i].ma5 = series.slice(i - 4, i + 1).reduce((s, x) => s + x.close, 0) / 5;
+      }
+      if (i >= 19) {
+        series[i].ma20 = series.slice(i - 19, i + 1).reduce((s, x) => s + x.close, 0) / 20;
+      }
+    }
+
+    renderChart({ series });
   } catch {
     renderChart({});
   }

@@ -2200,6 +2200,7 @@ def get_sector_stocks(
 class ChatPayload(BaseModel):
     message: str
     history: List[Dict[str, str]] = []
+    market_context: Optional[Dict[str, Any]] = None
 
 
 @app.post("/chat")
@@ -2239,12 +2240,45 @@ def open_chat(payload: ChatPayload) -> Dict[str, Any]:
     # Build system prompt
     now_str = datetime.now(tz=SHANGHAI_TZ).strftime("%Y-%m-%d %H:%M")
     lines = [
-        f"你是专业的A股投资分析助手，当前时间 {now_str}（北京时间）。",
-        "结合下方实时行情数据给出清晰、有逻辑的分析。不要模糊推辞，直接给出判断依据和建议。",
-        "回答控制在300字以内，结构清晰。所有分析仅供参考，不构成投资建议。",
+        f"你是专业的A股短中线投资分析助手，当前时间 {now_str}（北京时间）。",
+        "你能读取下方今日全部A股实时行情数据，据此给出具体判断。",
+        "推荐要有股票代码、看多逻辑、进场条件、止损位，敢于下结论，不要模糊推辞。",
+        "用中文回答，结构清晰，控制在600字以内。仅供参考，不构成投资建议。",
     ]
+    if payload.market_context:
+        mc = payload.market_context
+        total = mc.get("total_stocks")
+        indices = mc.get("indices") or []
+        if indices:
+            idx_parts = []
+            for idx in indices[:4]:
+                chg = idx.get("change_percent")
+                chg_s = f"{chg:+.2f}%" if chg is not None else "-"
+                idx_parts.append(f"{idx.get('name', '')} {idx.get('price', '-')} ({chg_s})")
+            lines.append(f"\n【今日市场】{' | '.join(idx_parts)}")
+        sectors = mc.get("hot_sectors") or []
+        if sectors:
+            sec_parts = [f"{s.get('name', '')} {s.get('change_percent', 0):+.2f}%" for s in sectors[:5] if s.get("name")]
+            if sec_parts:
+                lines.append(f"【热门板块】{' | '.join(sec_parts)}")
+        movers = mc.get("top_movers") or []
+        if movers:
+            scope = f"全市场 {total} 只 A 股中精选" if total else "精选"
+            lines.append(f"\n【{scope}活跃个股（今日实时数据）】")
+            for m in movers:
+                code = m.get("code", "")
+                name = m.get("name", "")
+                chg = m.get("change_percent")
+                chg_s = f"{chg:+.2f}%" if chg is not None else "-"
+                amount = m.get("amount")
+                amount_s = f"{amount/1e8:.1f}亿" if amount and amount >= 1e6 else (f"{amount/1e4:.0f}万" if amount else "-")
+                turn = m.get("turnover_rate")
+                turn_s = f" 换手{turn:.1f}%" if turn else ""
+                volr = m.get("vol_ratio")
+                volr_s = f" 量比{volr:.1f}" if volr and volr > 0 else ""
+                lines.append(f"  {name}({code}) {chg_s} 成交{amount_s}{turn_s}{volr_s}")
     if stock_contexts:
-        lines.append("\n【实时行情】")
+        lines.append("\n【个股实时行情】")
         for s in stock_contexts:
             price_str = str(s["price"]) if s.get("price") is not None else "暂无"
             chg = s.get("change_percent")
@@ -2267,7 +2301,7 @@ def open_chat(payload: ChatPayload) -> Dict[str, Any]:
         resp = client.chat.completions.create(
             model=os.getenv("OPENAI_MODEL", DEFAULT_LLM_MODEL),
             messages=messages,
-            max_tokens=600,
+            max_tokens=1000,
             temperature=0.7,
         )
         reply = resp.choices[0].message.content
