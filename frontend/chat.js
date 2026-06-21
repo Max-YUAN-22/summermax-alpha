@@ -296,8 +296,14 @@ async function initMatrix() {
     const aiCtx = buildAIStockContext(aiStocks);
     marketCtx = { ...marketCtx, top_movers: aiCtx, total_stocks: allStocks.length };
     aiContextNoteEl.textContent = `AI 已读取 ${allStocks.length} 只 · 精选 ${aiCtx.length} 只入上下文`;
+    // Unlock send button once market data is ready
+    sendBtnEl.disabled = false;
+    chatInputEl.placeholder = "问我任何关于今日A股的问题，或让我直接推荐票…";
   } catch (err) {
     matrixLoadingEl.innerHTML = `<div>加载失败：${err.message}<br><button onclick="initMatrix()" style="margin-top:10px;padding:6px 14px;border-radius:7px;border:1px solid rgba(102,209,255,0.22);background:rgba(102,209,255,0.08);color:var(--accent);cursor:pointer;font-size:0.78rem">重试</button></div>`;
+    // Allow sending even without market data
+    sendBtnEl.disabled = false;
+    chatInputEl.placeholder = "问我任何关于今日A股的问题，或让我直接推荐票…";
   }
 }
 
@@ -775,6 +781,8 @@ async function init() {
 
   renderMessages();
   loadMarketBar();
+  sendBtnEl.disabled = true;
+  chatInputEl.placeholder = "正在加载全市场数据，请稍候…";
   initMatrix();
   chatInputEl.focus();
 }
