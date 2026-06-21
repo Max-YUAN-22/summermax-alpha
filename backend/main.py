@@ -21,8 +21,6 @@ from fastapi.staticfiles import StaticFiles
 from openai import OpenAI
 from pydantic import BaseModel
 
-import waizao_client
-
 
 def load_local_env() -> None:
     env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
@@ -603,74 +601,11 @@ def fetch_stock_history_from_sina(code: str, start_date: datetime, end_date: dat
 
 
 def normalize_waizao_history_payload(payload: Any) -> pd.DataFrame:
-    if isinstance(payload, dict):
-        for key in ("data", "list", "rows", "result"):
-            if isinstance(payload.get(key), list):
-                payload = payload[key]
-                break
-
-    if not isinstance(payload, list) or not payload:
-        raise ValueError("Unexpected Waizao history payload.")
-
-    df = pd.DataFrame(payload)
-    renamed = df.rename(
-        columns={
-            "date": "date",
-            "tradeDate": "date",
-            "day": "date",
-            "openPrice": "open",
-            "open": "open",
-            "highPrice": "high",
-            "high": "high",
-            "lowPrice": "low",
-            "low": "low",
-            "closePrice": "close",
-            "close": "close",
-            "volume": "volume",
-            "vol": "volume",
-            "成交量": "volume",
-        }
-    )
-
-    required = {"date", "close", "volume"}
-    if not required.issubset(renamed.columns):
-        raise ValueError("Waizao payload does not contain date/close/volume fields.")
-
-    normalized = renamed.copy()
-    normalized = normalized.loc[:, [column for column in ["date", "open", "high", "low", "close", "volume"] if column in normalized.columns]]
-    normalized["date"] = pd.to_datetime(normalized["date"])
-    for field in ["open", "high", "low", "close", "volume"]:
-        if field in normalized.columns:
-            normalized[field] = pd.to_numeric(normalized[field], errors="coerce")
-
-    if "open" not in normalized.columns:
-        normalized["open"] = normalized["close"]
-    if "high" not in normalized.columns:
-        normalized["high"] = normalized["close"]
-    if "low" not in normalized.columns:
-        normalized["low"] = normalized["close"]
-    normalized = normalized.dropna(subset=["date", "open", "high", "low", "close", "volume"]).sort_values("date")
-    if normalized.empty:
-        raise ValueError("Waizao history payload is empty after normalization.")
-    return normalized
+    raise NotImplementedError
 
 
 def fetch_stock_history_from_waizao(code: str, start_date: datetime, end_date: datetime) -> pd.DataFrame:
-    result = waizao_client.request_api(
-        "getDayKLine",
-        params={
-            "type": 1,
-            "code": code,
-            "ktype": 101,
-            "fq": 1,
-            "startDate": start_date.strftime("%Y-%m-%d"),
-            "endDate": end_date.strftime("%Y-%m-%d"),
-            "fields": "all",
-            "filter": "",
-        },
-        method="post",
-    )
-    return normalize_waizao_history_payload(result["data"])
+    raise NotImplementedError
 
 
 def fetch_stock_history(code: str) -> tuple[pd.DataFrame, str]:
@@ -781,39 +716,7 @@ def normalize_intraday_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def normalize_waizao_intraday_payload(payload: Any) -> pd.DataFrame:
-    if isinstance(payload, dict):
-        for key in ("data", "list", "rows", "result"):
-            if isinstance(payload.get(key), list):
-                payload = payload[key]
-                break
-    if not isinstance(payload, list) or not payload:
-        raise ValueError("Unexpected Waizao intraday payload.")
-
-    df = pd.DataFrame(payload)
-    renamed = df.rename(
-        columns={
-            "date": "datetime",
-            "datetime": "datetime",
-            "time": "datetime",
-            "tradeDate": "datetime",
-            "close": "close",
-            "closePrice": "close",
-            "volume": "volume",
-            "vol": "volume",
-        }
-    )
-
-    if not {"datetime", "close"}.issubset(renamed.columns):
-        raise ValueError("Waizao intraday payload missing datetime/close.")
-
-    normalized = renamed.copy()
-    normalized["datetime"] = pd.to_datetime(normalized["datetime"])
-    normalized["close"] = pd.to_numeric(normalized["close"], errors="coerce")
-    normalized["volume"] = pd.to_numeric(normalized.get("volume", 0), errors="coerce").fillna(0)
-    normalized = normalized.dropna(subset=["datetime", "close"]).sort_values("datetime")
-    if normalized.empty:
-        raise ValueError("Waizao intraday payload is empty after normalization.")
-    return normalized.loc[:, ["datetime", "close", "volume"]]
+    raise NotImplementedError
 
 
 def fetch_intraday_bars_from_em(code: str) -> pd.DataFrame:
@@ -822,23 +725,7 @@ def fetch_intraday_bars_from_em(code: str) -> pd.DataFrame:
 
 
 def fetch_intraday_bars_from_waizao(code: str) -> pd.DataFrame:
-    now = datetime.now()
-    start = now.replace(hour=9, minute=30, second=0, microsecond=0)
-    end = now
-    result = waizao_client.request_api(
-        "getHourKLine",
-        params={
-            "type": 1,
-            "code": code,
-            "ktype": 15,
-            "startDate": start.strftime("%Y-%m-%d %H:%M:%S"),
-            "endDate": end.strftime("%Y-%m-%d %H:%M:%S"),
-            "fields": "all",
-            "filter": "",
-        },
-        method="post",
-    )
-    return normalize_waizao_intraday_payload(result["data"])
+    raise NotImplementedError
 
 
 def compute_intraday_context(df: pd.DataFrame) -> Dict[str, Any]:
@@ -876,12 +763,6 @@ def fetch_intraday_context(code: str) -> tuple[Optional[Dict[str, Any]], Optiona
         return compute_intraday_context(bars), "akshare.stock_zh_a_hist_min_em"
     except Exception as exc:
         errors.append(f"eastmoney intraday failed: {exc}")
-
-    try:
-        bars = fetch_intraday_bars_from_waizao(code)
-        return compute_intraday_context(bars), "waizaowang.getHourKLine"
-    except Exception as exc:
-        errors.append(f"waizao intraday failed: {exc}")
 
     return None, " | ".join(errors) if errors else None
 
@@ -2031,7 +1912,6 @@ def health() -> Dict[str, Any]:
         "app": APP_NAME,
         "version": APP_VERSION,
         "llm_configured": bool(os.getenv("OPENAI_API_KEY")),
-        "waizao_configured": waizao_client.is_configured(),
     }
 
 
@@ -2272,112 +2152,28 @@ def get_market_quicklists_endpoint(
 
 
 @app.get("/waizao/pankou")
-def get_waizao_pankou(
-    code: str = Query(..., min_length=8, description="Market symbol list such as sz000001,sh600000"),
-) -> Dict[str, Any]:
-    try:
-        return waizao_client.get_pankou(code)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Internal server error: {exc}") from exc
+def get_waizao_pankou(code: str = Query(...)) -> Dict[str, Any]:
+    raise HTTPException(status_code=410, detail="waizao API removed")
 
 
 @app.get("/waizao/day-kline")
-def get_waizao_day_kline(
-    code: str = Query(..., description="Single 6-digit A-share stock code"),
-    start_date: str = Query(..., description="YYYY-MM-DD"),
-    end_date: str = Query(..., description="YYYY-MM-DD"),
-    fq: int = Query(1, description="0 no adjust, 1 qfq, 2 hfq"),
-) -> Dict[str, Any]:
-    try:
-        return waizao_client.request_api(
-            "getDayKLine",
-            {
-                "type": 1,
-                "code": code,
-                "ktype": 101,
-                "fq": fq,
-                "startDate": start_date,
-                "endDate": end_date,
-                "fields": "all",
-                "filter": "",
-            },
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Internal server error: {exc}") from exc
+def get_waizao_day_kline(code: str = Query(...)) -> Dict[str, Any]:
+    raise HTTPException(status_code=410, detail="waizao API removed")
 
 
 @app.get("/waizao/hour-kline")
-def get_waizao_hour_kline(
-    code: str = Query(..., description="Single 6-digit A-share stock code"),
-    start_date: str = Query(..., description="YYYY-MM-DD HH:mm:ss"),
-    end_date: str = Query(..., description="YYYY-MM-DD HH:mm:ss"),
-    ktype: int = Query(60, description="5, 15, 30, 60"),
-) -> Dict[str, Any]:
-    try:
-        return waizao_client.request_api(
-            "getHourKLine",
-            {
-                "type": 1,
-                "code": code,
-                "ktype": ktype,
-                "startDate": start_date,
-                "endDate": end_date,
-                "fields": "all",
-                "filter": "",
-            },
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Internal server error: {exc}") from exc
+def get_waizao_hour_kline(code: str = Query(...)) -> Dict[str, Any]:
+    raise HTTPException(status_code=410, detail="waizao API removed")
 
 
 @app.get("/waizao/minute-kline")
-def get_waizao_minute_kline(
-    code: str = Query(..., description="Single 6-digit A-share stock code"),
-    start_date: str = Query(..., description="YYYY-MM-DD HH:mm:ss"),
-    end_date: str = Query(..., description="YYYY-MM-DD HH:mm:ss"),
-) -> Dict[str, Any]:
-    try:
-        return waizao_client.request_api(
-            "getMinuteKLine",
-            {
-                "type": 1,
-                "code": code,
-                "startDate": start_date,
-                "endDate": end_date,
-                "fields": "all",
-                "filter": "",
-            },
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Internal server error: {exc}") from exc
+def get_waizao_minute_kline(code: str = Query(...)) -> Dict[str, Any]:
+    raise HTTPException(status_code=410, detail="waizao API removed")
 
 
 @app.get("/waizao/base-info")
-def get_waizao_base_info(
-    code: str = Query(..., description="Single or multiple stock codes separated by commas"),
-) -> Dict[str, Any]:
-    try:
-        return waizao_client.request_api(
-            "getBaseInfo",
-            {
-                "type": 1,
-                "code": code,
-                "fields": "all",
-                "filter": "",
-            },
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Internal server error: {exc}") from exc
+def get_waizao_base_info(code: str = Query(...)) -> Dict[str, Any]:
+    raise HTTPException(status_code=410, detail="waizao API removed")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
