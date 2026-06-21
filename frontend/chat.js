@@ -2,6 +2,10 @@ const DEFAULT_API_BASE = "https://summermax-alpha-api.onrender.com";
 const EM_URL = "https://82.push2.eastmoney.com/api/qt/clist/get";
 const HISTORY_KEY = "summermax-alpha-chat-history";
 
+// ── Auth state ────────────────────────────────────────────────────────────────
+
+let isLoggedIn = false;
+
 function getApiBase() {
   const saved = localStorage.getItem("summermax-alpha-api-base");
   return (saved || DEFAULT_API_BASE).trim().replace(/\/+$/, "");
@@ -16,12 +20,9 @@ function getAuthHeaders() {
   return token ? { "Authorization": `Bearer ${token}` } : {};
 }
 
-// If backend requires auth and we're not logged in, redirect
 async function checkAuth() {
   const token = getToken();
-  if (!token) return; // no token → server will 401 on /chat if REQUIRE_AUTH is on; let user try first
-
-  // Validate token silently; if 401 clear and redirect
+  if (!token) return;
   try {
     const res = await fetch(`${getApiBase()}/auth/me`, {
       headers: { "Authorization": `Bearer ${token}` },
@@ -33,6 +34,7 @@ async function checkAuth() {
     } else if (res.ok) {
       const data = await res.json();
       renderUserBadge(data.email, data.role);
+      isLoggedIn = true;
     }
   } catch { /* network error, continue */ }
 }
@@ -54,6 +56,8 @@ function renderUserBadge(email, role) {
   });
 }
 
+// ── Format helpers ────────────────────────────────────────────────────────────
+
 function chgClass(v) {
   const n = Number(v);
   return Number.isNaN(n) ? "" : n >= 0 ? "up" : "down";
@@ -73,7 +77,7 @@ function fmtAmt(v) {
   return n.toFixed(0);
 }
 
-// ── Simple markdown renderer ─────────────────────────────────────────────────
+// ── Markdown renderer ─────────────────────────────────────────────────────────
 
 function renderMd(raw) {
   const esc = raw
@@ -123,7 +127,7 @@ function renderMd(raw) {
   return out.join("");
 }
 
-// ── EastMoney fetch helper ───────────────────────────────────────────────────
+// ── EastMoney fetch helper ────────────────────────────────────────────────────
 
 async function emGet(params) {
   const url = new URL(EM_URL);
@@ -139,23 +143,21 @@ async function emGet(params) {
   return (data.data || {}).diff || [];
 }
 
-// ── Full A-share fetch (parallel pages) ─────────────────────────────────────
+// ── Full A-share fetch (parallel pages) ──────────────────────────────────────
 
 const ALL_STOCK_FS = [
-  "m:0+t:6+f:!50",   // Shenzhen Main Board
-  "m:0+t:13+f:!50",  // ChiNext 创业板
-  "m:0+t:80+f:!50",  // SME 中小板 (legacy)
-  "m:1+t:2+f:!50",   // Shanghai Main Board
-  "m:1+t:23+f:!50",  // STAR 科创板
+  "m:0+t:6+f:!50",
+  "m:0+t:13+f:!50",
+  "m:0+t:80+f:!50",
+  "m:1+t:2+f:!50",
+  "m:1+t:23+f:!50",
 ].join(",");
 
 const STOCK_FIELDS = "f2,f3,f6,f8,f10,f11,f12,f14";
 
 async function fetchAllStocks() {
-  // Fetch 9 pages of 500 in parallel → up to 4500 stocks
   const PAGE_SIZE = 500;
   const PAGES = 9;
-
   const pages = await Promise.all(
     Array.from({ length: PAGES }, (_, i) =>
       emGet({ pn: String(i + 1), pz: String(PAGE_SIZE), po: "1", fid: "f3", fs: ALL_STOCK_FS, fields: STOCK_FIELDS })
@@ -165,7 +167,6 @@ async function fetchAllStocks() {
 
   const seen = new Set();
   const stocks = [];
-
   for (const diff of pages.flat()) {
     const code = String(diff.f12 || "").padStart(6, "0");
     if (!code || code === "000000" || seen.has(code)) continue;
@@ -184,34 +185,21 @@ async function fetchAllStocks() {
   return stocks;
 }
 
-// ── Smart selection of ~200 stocks to pass to AI ────────────────────────────
-
 function selectForAI(stocks) {
   const tradeable = stocks.filter((s) => s.price > 0 && s.name);
-
-  // Top 120 positive movers (not at limit)
   const gainers = [...tradeable]
     .filter((s) => s.change_percent > 0.5 && s.change_percent < 9.9)
     .sort((a, b) => b.change_percent - a.change_percent)
     .slice(0, 120);
-
-  // Top 50 by amount (heavy money flow)
-  const byAmount = [...tradeable]
-    .sort((a, b) => b.amount - a.amount)
-    .slice(0, 50);
-
-  // Top 30 by turnover (high activity)
+  const byAmount = [...tradeable].sort((a, b) => b.amount - a.amount).slice(0, 50);
   const byTurnover = [...tradeable]
     .filter((s) => s.turnover_rate > 0)
     .sort((a, b) => b.turnover_rate - a.turnover_rate)
     .slice(0, 30);
-
-  // Top 20 beaten-down (potential reversal candidates, position not high)
   const beaten = [...tradeable]
     .filter((s) => s.change_percent < -3)
     .sort((a, b) => a.change_percent - b.change_percent)
     .slice(0, 20);
-
   const seen = new Set();
   const result = [];
   for (const s of [...gainers, ...byAmount, ...byTurnover, ...beaten]) {
@@ -220,7 +208,7 @@ function selectForAI(stocks) {
   return result;
 }
 
-// ── Matrix UI ────────────────────────────────────────────────────────────────
+// ── Matrix UI ─────────────────────────────────────────────────────────────────
 
 let allStocks = [];
 let displayStocks = [];
@@ -239,7 +227,6 @@ function sortAndFilter() {
   let result = q
     ? allStocks.filter((s) => s.code.includes(q) || s.name.includes(q))
     : [...allStocks];
-
   switch (currentSort) {
     case "amount":  result.sort((a, b) => b.amount - a.amount); break;
     case "turn":    result.sort((a, b) => b.turnover_rate - a.turnover_rate); break;
@@ -251,7 +238,6 @@ function sortAndFilter() {
 
 function renderMatrix() {
   if (!allStocks.length) return;
-
   sortAndFilter();
 
   const up = allStocks.filter((s) => s.change_percent > 0).length;
@@ -269,7 +255,6 @@ function renderMatrix() {
 
   const shown = displayStocks.slice(0, DISPLAY_LIMIT);
   const fragment = document.createDocumentFragment();
-
   shown.forEach((s, i) => {
     const cls = chgClass(s.change_percent);
     const row = document.createElement("div");
@@ -307,11 +292,9 @@ async function initMatrix() {
     allStocks = await fetchAllStocks();
     matrixLoadingEl.style.display = "none";
     renderMatrix();
-
     const aiStocks = selectForAI(allStocks);
     const aiCtx = buildAIStockContext(aiStocks);
     marketCtx = { ...marketCtx, top_movers: aiCtx, total_stocks: allStocks.length };
-
     aiContextNoteEl.textContent = `AI 已读取 ${allStocks.length} 只 · 精选 ${aiCtx.length} 只入上下文`;
   } catch (err) {
     matrixLoadingEl.innerHTML = `<div>加载失败：${err.message}<br><button onclick="initMatrix()" style="margin-top:10px;padding:6px 14px;border-radius:7px;border:1px solid rgba(102,209,255,0.22);background:rgba(102,209,255,0.08);color:var(--accent);cursor:pointer;font-size:0.78rem">重试</button></div>`;
@@ -320,17 +303,12 @@ async function initMatrix() {
 
 function buildAIStockContext(stocks) {
   return stocks.map((s) => ({
-    code: s.code,
-    name: s.name,
-    price: s.price,
-    change_percent: s.change_percent,
-    amount: s.amount,
-    turnover_rate: s.turnover_rate,
-    vol_ratio: s.vol_ratio,
+    code: s.code, name: s.name, price: s.price,
+    change_percent: s.change_percent, amount: s.amount,
+    turnover_rate: s.turnover_rate, vol_ratio: s.vol_ratio,
   }));
 }
 
-// Sort tab events
 document.querySelectorAll(".sort-tab").forEach((btn) => {
   btn.addEventListener("click", () => {
     document.querySelectorAll(".sort-tab").forEach((b) => b.classList.remove("active"));
@@ -340,13 +318,12 @@ document.querySelectorAll(".sort-tab").forEach((btn) => {
   });
 });
 
-// Search
 stockSearchEl.addEventListener("input", () => {
   searchQuery = stockSearchEl.value.trim();
   renderMatrix();
 });
 
-// ── Market bar (indices + sectors) ──────────────────────────────────────────
+// ── Market bar ────────────────────────────────────────────────────────────────
 
 let marketCtx = null;
 const marketBarEl = document.getElementById("marketBar");
@@ -355,18 +332,13 @@ async function loadMarketBar() {
   const apiBase = getApiBase();
   let indices = [];
   let hotSectors = [];
-
   try {
     const r = await fetch(`${apiBase}/market/overview`);
     const d = await r.json();
     if (Array.isArray(d.indices)) indices = d.indices;
   } catch { /* ignore */ }
-
   try {
-    const diffs = await emGet({
-      fid: "f3", pn: "1", pz: "10", po: "1",
-      fs: "m:90 t:2 f:!50", fields: "f3,f12,f14",
-    });
+    const diffs = await emGet({ fid: "f3", pn: "1", pz: "10", po: "1", fs: "m:90 t:2 f:!50", fields: "f3,f12,f14" });
     hotSectors = [...diffs]
       .sort((a, b) => (Number(b.f3) || 0) - (Number(a.f3) || 0))
       .slice(0, 5)
@@ -386,7 +358,6 @@ async function loadMarketBar() {
   }).join('<div class="mkt-divider"></div>');
 
   const divider = indices.length && hotSectors.length ? '<div class="mkt-divider"></div>' : "";
-
   const secHtml = hotSectors.length
     ? `<span class="mkt-label">热板块</span>` + hotSectors.map((s) => `<div class="mkt-sector"><span>${s.name}</span><span class="${chgClass(s.change_percent)}">${chgText(s.change_percent)}</span></div>`).join("")
     : "";
@@ -394,7 +365,243 @@ async function loadMarketBar() {
   marketBarEl.innerHTML = idxHtml + divider + secHtml;
 }
 
-// ── Chat ─────────────────────────────────────────────────────────────────────
+// ── Server history ────────────────────────────────────────────────────────────
+
+async function loadServerHistory() {
+  if (!isLoggedIn) return false;
+  try {
+    const res = await fetch(`${getApiBase()}/user/history`, { headers: getAuthHeaders() });
+    if (!res.ok) return false;
+    const data = await res.json();
+    if (data.messages && data.messages.length > 0) {
+      saveHistory(data.messages);
+      return true;
+    }
+    return false;
+  } catch { return false; }
+}
+
+async function saveMessageToServer(msg) {
+  if (!isLoggedIn) return;
+  try {
+    await fetch(`${getApiBase()}/user/history`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      body: JSON.stringify({ messages: [msg] }),
+    });
+  } catch {}
+}
+
+async function clearServerHistory() {
+  if (!isLoggedIn) return;
+  try {
+    await fetch(`${getApiBase()}/user/history`, {
+      method: "DELETE",
+      headers: getAuthHeaders(),
+    });
+  } catch {}
+}
+
+// ── Portfolio ─────────────────────────────────────────────────────────────────
+
+let portfolioPositions = [];
+
+const portfolioListEl = document.getElementById("portfolioList");
+const addPosBtnEl = document.getElementById("addPosBtn");
+const addPosFormEl = document.getElementById("addPosForm");
+const posCodeEl = document.getElementById("posCode");
+const posBuyPriceEl = document.getElementById("posBuyPrice");
+const posSharesEl = document.getElementById("posShares");
+const posSubmitBtnEl = document.getElementById("posSubmitBtn");
+const posCancelBtnEl = document.getElementById("posCancelBtn");
+
+async function loadPortfolio() {
+  if (!isLoggedIn) {
+    portfolioListEl.innerHTML = `<div class="pos-empty">请先登录后使用持仓跟踪功能</div>`;
+    return;
+  }
+  try {
+    const res = await fetch(`${getApiBase()}/user/portfolio`, { headers: getAuthHeaders() });
+    if (!res.ok) return;
+    const data = await res.json();
+    portfolioPositions = data.positions || [];
+    renderPortfolio();
+    if (portfolioPositions.length > 0) refreshPortfolioPrices();
+  } catch {}
+}
+
+async function addPortfolioPosition(code, name, buyPrice, shares) {
+  try {
+    const res = await fetch(`${getApiBase()}/user/portfolio`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      body: JSON.stringify({ code, name, buy_price: buyPrice, shares }),
+    });
+    return res.ok;
+  } catch { return false; }
+}
+
+async function deletePortfolioPosition(id) {
+  try {
+    const res = await fetch(`${getApiBase()}/user/portfolio/${id}`, {
+      method: "DELETE",
+      headers: getAuthHeaders(),
+    });
+    return res.ok;
+  } catch { return false; }
+}
+
+function renderPortfolio() {
+  if (!portfolioPositions.length) {
+    portfolioListEl.innerHTML = `<div class="pos-empty">暂无持仓记录<br>点击「+ 添加持仓」开始跟踪</div>`;
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  portfolioPositions.forEach((pos) => {
+    const el = document.createElement("div");
+    el.className = "pos-row";
+
+    const plPct = (pos._current_price && pos._current_price > 0)
+      ? ((pos._current_price - pos.buy_price) / pos.buy_price * 100)
+      : null;
+    const plClass = plPct === null ? "" : plPct >= 0 ? "up" : "down";
+    const plText = plPct === null ? "获取中…" : `${plPct >= 0 ? "+" : ""}${plPct.toFixed(2)}%`;
+    const currentPriceText = (pos._current_price && pos._current_price > 0) ? pos._current_price.toFixed(2) : "---";
+    const sharesText = pos.shares > 0 ? ` · ${pos.shares}手` : "";
+
+    el.innerHTML = `
+      <div class="pos-row-top">
+        <div class="pos-stock">
+          <span class="pos-code">${pos.code}</span>
+          <span class="pos-name">${pos.name}</span>
+        </div>
+        <span class="pos-pl ${plClass}">${plText}</span>
+      </div>
+      <div class="pos-row-bottom">
+        <span class="pos-buy-info">买入 ${pos.buy_price.toFixed(2)} → 现价 ${currentPriceText}${sharesText} · ${pos.buy_date}</span>
+        <button class="pos-delete" data-id="${pos.id}">删除</button>
+      </div>
+    `;
+    frag.appendChild(el);
+  });
+
+  portfolioListEl.innerHTML = "";
+  portfolioListEl.appendChild(frag);
+
+  portfolioListEl.querySelectorAll(".pos-delete").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = Number(btn.dataset.id);
+      btn.disabled = true;
+      btn.textContent = "…";
+      const ok = await deletePortfolioPosition(id);
+      if (ok) {
+        portfolioPositions = portfolioPositions.filter((p) => p.id !== id);
+        renderPortfolio();
+      } else {
+        btn.disabled = false;
+        btn.textContent = "删除";
+      }
+    });
+  });
+}
+
+async function refreshPortfolioPrices() {
+  for (const pos of portfolioPositions) {
+    try {
+      const market = /^[69]/.test(pos.code) ? "1" : "0";
+      const secid = `${market}.${pos.code}`;
+      const url = `https://push2.eastmoney.com/api/qt/stock/get?secid=${secid}&fields=f43&ut=bd1d9ddb04089700cf9c27f6f7426281`;
+      const r = await fetch(url, { headers: { "Referer": "https://quote.eastmoney.com/" } });
+      const d = await r.json();
+      const raw = Number(d?.data?.f43);
+      if (!isNaN(raw) && raw > 0) pos._current_price = raw / 100;
+    } catch {}
+  }
+  renderPortfolio();
+}
+
+addPosBtnEl?.addEventListener("click", () => {
+  if (!isLoggedIn) { window.location.href = "auth.html"; return; }
+  const isOpen = addPosFormEl.style.display !== "none";
+  addPosFormEl.style.display = isOpen ? "none" : "";
+  if (!isOpen) posCodeEl?.focus();
+});
+
+posCancelBtnEl?.addEventListener("click", () => {
+  addPosFormEl.style.display = "none";
+  if (posCodeEl) posCodeEl.value = "";
+  if (posBuyPriceEl) posBuyPriceEl.value = "";
+  if (posSharesEl) posSharesEl.value = "";
+});
+
+posSubmitBtnEl?.addEventListener("click", async () => {
+  const code = posCodeEl?.value.trim();
+  const buyPrice = parseFloat(posBuyPriceEl?.value);
+  const shares = parseFloat(posSharesEl?.value || "0") || 0;
+
+  if (!code || !/^\d{6}$/.test(code)) { alert("请输入正确的6位股票代码"); return; }
+  if (isNaN(buyPrice) || buyPrice <= 0) { alert("请输入正确的买入价格"); return; }
+
+  posSubmitBtnEl.disabled = true;
+  posSubmitBtnEl.textContent = "添加中…";
+
+  // Try to get stock name from allStocks first, then EastMoney
+  let name = allStocks.find((s) => s.code === code)?.name || "";
+  if (!name) {
+    try {
+      const market = /^[69]/.test(code) ? "1" : "0";
+      const r = await fetch(
+        `https://push2.eastmoney.com/api/qt/stock/get?secid=${market}.${code}&fields=f58&ut=bd1d9ddb04089700cf9c27f6f7426281`,
+        { headers: { "Referer": "https://quote.eastmoney.com/" } }
+      );
+      const d = await r.json();
+      name = d?.data?.f58 || code;
+    } catch { name = code; }
+  }
+
+  const ok = await addPortfolioPosition(code, name, buyPrice, shares);
+  if (ok) {
+    if (posCodeEl) posCodeEl.value = "";
+    if (posBuyPriceEl) posBuyPriceEl.value = "";
+    if (posSharesEl) posSharesEl.value = "";
+    addPosFormEl.style.display = "none";
+    await loadPortfolio();
+  } else {
+    alert("添加失败，请重试");
+  }
+  posSubmitBtnEl.disabled = false;
+  posSubmitBtnEl.textContent = "确认添加";
+});
+
+// Enter key in posCode moves to price
+posCodeEl?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") posBuyPriceEl?.focus();
+});
+posBuyPriceEl?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") posSubmitBtnEl?.click();
+});
+
+// ── Left panel tab switching ──────────────────────────────────────────────────
+
+document.querySelectorAll(".left-tab").forEach((tab) => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".left-tab").forEach((t) => t.classList.remove("active"));
+    tab.classList.add("active");
+    const matrixView = document.getElementById("matrixView");
+    const portfolioView = document.getElementById("portfolioView");
+    if (tab.dataset.tab === "matrix") {
+      matrixView.style.display = "";
+      portfolioView.style.display = "none";
+    } else {
+      matrixView.style.display = "none";
+      portfolioView.style.display = "flex";
+      loadPortfolio();
+    }
+  });
+});
+
+// ── Chat ──────────────────────────────────────────────────────────────────────
 
 let sending = false;
 
@@ -455,10 +662,12 @@ async function sendMessage(text) {
   sendBtnEl.disabled = true;
 
   const ts = Date.now();
+  const userMsg = { role: "user", content: text, ts };
   const history = getHistory();
-  history.push({ role: "user", content: text, ts });
+  history.push(userMsg);
   saveHistory(history);
   appendMsg("user", text, ts);
+  saveMessageToServer(userMsg);  // fire and forget
 
   const thinkEl = appendMsg("assistant", "正在分析全市场数据…", null);
   thinkEl.classList.add("thinking");
@@ -483,16 +692,19 @@ async function sendMessage(text) {
     const reply = response.ok ? (data.content || "无法获取回复") : (data.detail || "请求失败");
     thinkEl.remove();
     const replyTs = Date.now();
+    const assistantMsg = { role: "assistant", content: reply, ts: replyTs };
     const updated = getHistory();
-    updated.push({ role: "assistant", content: reply, ts: replyTs });
+    updated.push(assistantMsg);
     saveHistory(updated);
     appendMsg("assistant", reply, replyTs);
+    saveMessageToServer(assistantMsg);  // fire and forget
   } catch {
     thinkEl.remove();
+    const errMsg = { role: "assistant", content: "网络错误，请检查连接后重试。", ts: Date.now() };
     const updated = getHistory();
-    updated.push({ role: "assistant", content: "网络错误，请检查连接后重试。", ts: Date.now() });
+    updated.push(errMsg);
     saveHistory(updated);
-    appendMsg("assistant", "网络错误，请检查连接后重试。", Date.now());
+    appendMsg("assistant", errMsg.content, errMsg.ts);
   } finally {
     sending = false;
     sendBtnEl.disabled = false;
@@ -527,6 +739,7 @@ clearBtnEl.addEventListener("click", () => {
     localStorage.removeItem(HISTORY_KEY);
     messagesEl.querySelectorAll(".msg").forEach((el) => el.remove());
     if (emptyStateEl) emptyStateEl.style.display = "flex";
+    clearServerHistory();
   }
 });
 
@@ -539,8 +752,31 @@ document.querySelectorAll(".suggestion-chip").forEach((chip) => {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
-checkAuth();
-renderMessages();
-loadMarketBar();
-initMatrix();
-chatInputEl.focus();
+async function init() {
+  await checkAuth();
+
+  if (isLoggedIn) {
+    // Try to load history from server; fallback to localStorage
+    const serverLoaded = await loadServerHistory();
+    if (!serverLoaded) {
+      // Sync any existing local history to server
+      const localH = getHistory();
+      if (localH.length > 0) {
+        try {
+          await fetch(`${getApiBase()}/user/history`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+            body: JSON.stringify({ messages: localH }),
+          });
+        } catch {}
+      }
+    }
+  }
+
+  renderMessages();
+  loadMarketBar();
+  initMatrix();
+  chatInputEl.focus();
+}
+
+init();

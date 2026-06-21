@@ -90,6 +90,25 @@ def init_db() -> None:
             used       INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
+
+        CREATE TABLE IF NOT EXISTS chat_history (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            email      TEXT NOT NULL,
+            role       TEXT NOT NULL,
+            content    TEXT NOT NULL,
+            ts         INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS portfolio (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            email      TEXT NOT NULL,
+            code       TEXT NOT NULL,
+            name       TEXT NOT NULL,
+            buy_price  REAL NOT NULL,
+            shares     REAL NOT NULL DEFAULT 0,
+            buy_date   TEXT NOT NULL DEFAULT (date('now')),
+            note       TEXT NOT NULL DEFAULT ''
+        );
     """)
     conn.commit()
 
@@ -154,7 +173,7 @@ def _send_verification_email(to_email: str, code: str) -> bool:
     host = os.getenv("SMTP_HOST", "")
     port = int(os.getenv("SMTP_PORT", "587"))
     user = os.getenv("SMTP_USER", "")
-    password = os.getenv("SMTP_PASSWORD", "")
+    password = os.getenv("SMTP_PASS", os.getenv("SMTP_PASSWORD", ""))
     from_name = os.getenv("SMTP_FROM_NAME", "SummerMax Alpha")
 
     if not host or not user:
@@ -200,6 +219,18 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: str
     password: str
+
+
+class SaveHistoryRequest(BaseModel):
+    messages: List[Dict[str, Any]]
+
+
+class AddPositionRequest(BaseModel):
+    code: str
+    name: str
+    buy_price: float
+    shares: float = 0
+    note: str = ""
 
 
 # ── Auth endpoints ────────────────────────────────────────────────────────────
@@ -343,6 +374,105 @@ def auth_me(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
     if not claims:
         raise HTTPException(status_code=401, detail="未登录或 Token 已过期")
     return {"email": claims["sub"], "role": claims.get("role", "user")}
+
+
+# ── Per-user chat history ─────────────────────────────────────────────────────
+
+@app.get("/user/history")
+def get_user_history(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+    claims = _get_token_from_header(authorization)
+    if not claims:
+        raise HTTPException(status_code=401, detail="请先登录")
+    email = claims["sub"]
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT role, content, ts FROM chat_history WHERE email = ? ORDER BY ts ASC LIMIT 100",
+        (email,),
+    ).fetchall()
+    conn.close()
+    return {"messages": [{"role": r["role"], "content": r["content"], "ts": r["ts"]} for r in rows]}
+
+
+@app.post("/user/history")
+def save_user_history(payload: SaveHistoryRequest, authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+    claims = _get_token_from_header(authorization)
+    if not claims:
+        raise HTTPException(status_code=401, detail="请先登录")
+    email = claims["sub"]
+    conn = get_db()
+    for msg in payload.messages:
+        role = str(msg.get("role", ""))
+        content = str(msg.get("content", ""))
+        ts = int(msg.get("ts") or 0)
+        if role in ("user", "assistant") and content:
+            conn.execute(
+                "INSERT INTO chat_history (email, role, content, ts) VALUES (?, ?, ?, ?)",
+                (email, role, content, ts),
+            )
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
+@app.delete("/user/history")
+def clear_user_history(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+    claims = _get_token_from_header(authorization)
+    if not claims:
+        raise HTTPException(status_code=401, detail="请先登录")
+    email = claims["sub"]
+    conn = get_db()
+    conn.execute("DELETE FROM chat_history WHERE email = ?", (email,))
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
+# ── Per-user portfolio ────────────────────────────────────────────────────────
+
+@app.get("/user/portfolio")
+def get_portfolio(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+    claims = _get_token_from_header(authorization)
+    if not claims:
+        raise HTTPException(status_code=401, detail="请先登录")
+    email = claims["sub"]
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT id, code, name, buy_price, shares, buy_date, note FROM portfolio WHERE email = ? ORDER BY id DESC",
+        (email,),
+    ).fetchall()
+    conn.close()
+    return {"positions": [dict(r) for r in rows]}
+
+
+@app.post("/user/portfolio")
+def add_portfolio_position(payload: AddPositionRequest, authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+    claims = _get_token_from_header(authorization)
+    if not claims:
+        raise HTTPException(status_code=401, detail="请先登录")
+    email = claims["sub"]
+    buy_date = datetime.now(tz=SHANGHAI_TZ).strftime("%Y-%m-%d")
+    conn = get_db()
+    cursor = conn.execute(
+        "INSERT INTO portfolio (email, code, name, buy_price, shares, buy_date, note) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (email, payload.code.strip(), payload.name.strip(), payload.buy_price, payload.shares, buy_date, payload.note.strip()),
+    )
+    new_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return {"id": new_id, "ok": True}
+
+
+@app.delete("/user/portfolio/{position_id}")
+def delete_portfolio_position(position_id: int, authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+    claims = _get_token_from_header(authorization)
+    if not claims:
+        raise HTTPException(status_code=401, detail="请先登录")
+    email = claims["sub"]
+    conn = get_db()
+    conn.execute("DELETE FROM portfolio WHERE id = ? AND email = ?", (position_id, email))
+    conn.commit()
+    conn.close()
+    return {"ok": True}
 
 
 
