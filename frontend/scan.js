@@ -1,8 +1,4 @@
 const DEFAULT_API_BASE = "https://summermax-alpha-api.onrender.com";
-const EM_URL = "https://82.push2.eastmoney.com/api/qt/clist/get";
-const EM_HEADERS = {
-  "Referer": "https://quote.eastmoney.com/center/boardlist.html",
-};
 
 function getApiBase() {
   const saved = localStorage.getItem("summermax-alpha-api-base");
@@ -33,22 +29,23 @@ function fmtAmount(value) {
   return n.toFixed(0);
 }
 
-// Cache board code (BK...) by name, populated when sector list loads
-const sectorCodeMap = {};
+// ── Retry helper ──────────────────────────────────────────────────────────────
 
-async function emFetch(params) {
-  const url = new URL(EM_URL);
-  const base = {
-    pn: "1", pz: "100", po: "1", np: "1",
-    ut: "bd1d9ddb04089700cf9c27f6f7426281",
-    fltt: "2", invt: "2", fid: "f3",
-  };
-  Object.entries({ ...base, ...params }).forEach(([k, v]) => url.searchParams.set(k, v));
-  const res = await fetch(url.toString(), { headers: EM_HEADERS });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
-  return (data.data || {}).diff || [];
+async function apiFetch(path, retries = 2, delayMs = 8000) {
+  const url = `${getApiBase()}${path}`;
+  for (let i = 0; i <= retries; i++) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) return res;
+      throw new Error(`HTTP ${res.status}`);
+    } catch (err) {
+      if (i === retries) throw err;
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
 }
+
+// ── DOM refs ──────────────────────────────────────────────────────────────────
 
 const sectorListEl = document.getElementById("sectorList");
 const sectorLoadingEl = document.getElementById("sectorLoading");
@@ -59,46 +56,38 @@ const stockLoadingEl = document.getElementById("stockLoading");
 
 let activeSectorRow = null;
 
+// ── Load sector list via backend proxy ────────────────────────────────────────
+
 async function loadSectors() {
   if (sectorLoadingEl) sectorLoadingEl.style.display = "block";
   if (sectorListEl) sectorListEl.innerHTML = "";
 
   try {
-    const diffs = await emFetch({
-      fs: "m:90 t:2 f:!50",
-      fields: "f3,f6,f12,f14,f104,f105,f128,f136",
-    });
+    const res = await apiFetch("/market/sectors");
+    const data = await res.json();
+    const sectors = data.sectors || [];
 
     if (sectorLoadingEl) sectorLoadingEl.style.display = "none";
 
-    if (!diffs.length) {
+    if (!sectors.length) {
       if (sectorListEl) sectorListEl.innerHTML = `<div class="empty-note">暂无板块数据（非交易时段可能无数据）</div>`;
       return;
     }
 
-    diffs.forEach((item) => {
-      const name = String(item.f14 || "");
-      const code = String(item.f12 || "");
-      if (name && code) sectorCodeMap[name] = code;
-    });
-
-    const sorted = [...diffs].sort((a, b) => (Number(b.f3) || 0) - (Number(a.f3) || 0));
-
-    sectorListEl.innerHTML = sorted.map((item, i) => {
-      const name = String(item.f14 || "");
-      const cls = chgClass(item.f3);
-      const leaderCls = chgClass(item.f136);
+    sectorListEl.innerHTML = sectors.map((s, i) => {
+      const cls = chgClass(s.change_percent);
+      const leaderCls = chgClass(s.leader_change);
       return `
-        <button type="button" class="sector-row" data-sector="${encodeURIComponent(name)}">
+        <button type="button" class="sector-row" data-sector="${encodeURIComponent(s.name)}">
           <span class="sr-rank">${i + 1}</span>
-          <span class="sr-name">${name}</span>
-          <span class="sr-chg ${cls}">${chgText(item.f3)}</span>
-          <span class="sr-amount">${fmtAmount(item.f6)}</span>
+          <span class="sr-name">${s.name}</span>
+          <span class="sr-chg ${cls}">${chgText(s.change_percent)}</span>
+          <span class="sr-amount">${fmtAmount(s.amount)}</span>
           <span class="sr-counts">
-            <span class="up">↑${item.f104 || 0}</span>
-            <span class="down"> ↓${item.f105 || 0}</span>
+            <span class="up">↑${s.rise_count || 0}</span>
+            <span class="down"> ↓${s.fall_count || 0}</span>
           </span>
-          <span class="sr-leader ${leaderCls}">${item.f128 || ""} ${item.f136 != null ? chgText(item.f136) : ""}</span>
+          <span class="sr-leader ${leaderCls}">${s.leader || ""} ${s.leader_change != null ? chgText(s.leader_change) : ""}</span>
           <span class="sr-arrow">›</span>
         </button>
       `;
@@ -125,9 +114,9 @@ async function loadSectors() {
   }
 }
 
-async function loadSectorStocks(sectorName) {
-  const boardCode = sectorCodeMap[sectorName];
+// ── Load stocks in a sector via backend proxy ─────────────────────────────────
 
+async function loadSectorStocks(sectorName) {
   if (stockPanelEl) stockPanelEl.style.display = "flex";
   const placeholder = document.getElementById("stockPlaceholder");
   if (placeholder) placeholder.style.display = "none";
@@ -136,21 +125,18 @@ async function loadSectorStocks(sectorName) {
   if (stockLoadingEl) stockLoadingEl.style.display = "block";
 
   try {
-    if (!boardCode) throw new Error("未找到板块代码，请重新加载板块列表");
-
-    const diffs = await emFetch({
-      fs: `b:${boardCode}+f:!50+s:z`,
-      fields: "f2,f3,f5,f6,f8,f12,f14",
-    });
+    const res = await apiFetch(`/market/sector/stocks?name=${encodeURIComponent(sectorName)}`);
+    const data = await res.json();
+    const stocks = data.stocks || [];
 
     if (stockLoadingEl) stockLoadingEl.style.display = "none";
 
-    if (!diffs.length) {
+    if (!stocks.length) {
       if (stockTableEl) stockTableEl.innerHTML = `<div class="empty-note">该板块暂无个股数据</div>`;
       return;
     }
 
-    const sorted = [...diffs].sort((a, b) => (Number(b.f3) || 0) - (Number(a.f3) || 0));
+    const sorted = [...stocks].sort((a, b) => (b.change_percent ?? -999) - (a.change_percent ?? -999));
 
     stockTableEl.innerHTML = `
       <div class="stock-col-head">
@@ -161,20 +147,19 @@ async function loadSectorStocks(sectorName) {
         <span>换手率</span>
         <span></span>
       </div>
-      ${sorted.map((item) => {
-        const cls = chgClass(item.f3);
-        const code = String(item.f12 || "").padStart(6, "0");
+      ${sorted.map((s) => {
+        const cls = chgClass(s.change_percent);
         return `
           <div class="stock-row">
             <div class="sr2-id">
-              <span class="sr2-code">${code}</span>
-              <span class="sr2-name">${item.f14 || ""}</span>
+              <span class="sr2-code">${s.code}</span>
+              <span class="sr2-name">${s.name}</span>
             </div>
-            <span class="sr2-price ${cls}">${fmt(item.f2)}</span>
-            <span class="sr2-chg ${cls}">${chgText(item.f3)}</span>
-            <span class="sr2-amount">${fmtAmount(item.f6)}</span>
-            <span class="sr2-turn">${item.f8 != null ? fmt(item.f8) + "%" : "--"}</span>
-            <a href="stock.html?code=${code}" class="btn-analyze-stock">分析</a>
+            <span class="sr2-price ${cls}">${s.price != null ? Number(s.price).toFixed(2) : "--"}</span>
+            <span class="sr2-chg ${cls}">${chgText(s.change_percent)}</span>
+            <span class="sr2-amount">${fmtAmount(s.amount)}</span>
+            <span class="sr2-turn">${s.turnover_rate != null ? Number(s.turnover_rate).toFixed(1) + "%" : "--"}</span>
+            <a href="stock.html?code=${s.code}" class="btn-analyze-stock">分析</a>
           </div>
         `;
       }).join("")}

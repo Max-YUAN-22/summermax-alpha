@@ -519,14 +519,20 @@ function renderPortfolio() {
 
 async function refreshPortfolioPrices() {
   for (const pos of portfolioPositions) {
+    // First try from already-loaded allStocks (free, instant)
+    const cached = allStocks.find((s) => s.code === pos.code);
+    if (cached && cached.price > 0) {
+      pos._current_price = cached.price;
+      continue;
+    }
+    // Fallback: backend stock endpoint
     try {
-      const market = /^[69]/.test(pos.code) ? "1" : "0";
-      const secid = `${market}.${pos.code}`;
-      const url = `https://push2.eastmoney.com/api/qt/stock/get?secid=${secid}&fields=f43&ut=bd1d9ddb04089700cf9c27f6f7426281`;
-      const r = await fetch(url, { headers: { "Referer": "https://quote.eastmoney.com/" } });
-      const d = await r.json();
-      const raw = Number(d?.data?.f43);
-      if (!isNaN(raw) && raw > 0) pos._current_price = raw / 100;
+      const res = await fetch(`${getApiBase()}/stock?code=${pos.code}`);
+      if (res.ok) {
+        const d = await res.json();
+        const price = d?.realtime?.price;
+        if (price && price > 0) pos._current_price = price;
+      }
     } catch {}
   }
   renderPortfolio();
@@ -557,17 +563,15 @@ posSubmitBtnEl?.addEventListener("click", async () => {
   posSubmitBtnEl.disabled = true;
   posSubmitBtnEl.textContent = "添加中…";
 
-  // Try to get stock name from allStocks first, then EastMoney
+  // Try to get stock name from allStocks first, then backend
   let name = allStocks.find((s) => s.code === code)?.name || "";
   if (!name) {
     try {
-      const market = /^[69]/.test(code) ? "1" : "0";
-      const r = await fetch(
-        `https://push2.eastmoney.com/api/qt/stock/get?secid=${market}.${code}&fields=f58&ut=bd1d9ddb04089700cf9c27f6f7426281`,
-        { headers: { "Referer": "https://quote.eastmoney.com/" } }
-      );
-      const d = await r.json();
-      name = d?.data?.f58 || code;
+      const res = await fetch(`${getApiBase()}/stock?code=${code}`);
+      if (res.ok) {
+        const d = await res.json();
+        name = d?.realtime?.name || code;
+      } else { name = code; }
     } catch { name = code; }
   }
 
