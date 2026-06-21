@@ -2308,6 +2308,118 @@ def fetch_sector_stocks(sector_name: str) -> List[Dict[str, Any]]:
     return results
 
 
+CHINESE_NUM_MAP = {
+    "一": 1, "两": 2, "二": 2, "三": 3, "四": 4, "五": 5,
+    "六": 6, "七": 7, "八": 8, "九": 9, "十": 10,
+}
+
+
+def _last_trading_day_on_or_before(d: datetime) -> datetime:
+    while d.weekday() >= 5:
+        d -= timedelta(days=1)
+    return d
+
+
+def _prev_trading_days(d: datetime, n: int) -> datetime:
+    count = 0
+    while count < n:
+        d -= timedelta(days=1)
+        if d.weekday() < 5:
+            count += 1
+    return d
+
+
+def detect_historical_date(message: str) -> Optional[datetime]:
+    """Return the trading date a message refers to, or None for today/future/unknown."""
+    now = datetime.now(tz=SHANGHAI_TZ).replace(tzinfo=None)
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    def cn_to_int(s: str) -> Optional[int]:
+        return CHINESE_NUM_MAP.get(s) or (int(s) if s.isdigit() else None)
+
+    # "N个交易日前"
+    m = re.search(r"([一两二三四五六七八九十\d]+)\s*个?交易日前", message)
+    if m:
+        n = cn_to_int(m.group(1))
+        if n:
+            return _prev_trading_days(today, n)
+
+    # "N天前"
+    m = re.search(r"([一两二三四五六七八九十\d]+)\s*天前", message)
+    if m:
+        n = cn_to_int(m.group(1))
+        if n:
+            return _last_trading_day_on_or_before(today - timedelta(days=n))
+
+    # "昨天", "昨日"
+    if re.search(r"昨[天日]", message):
+        return _last_trading_day_on_or_before(today - timedelta(days=1))
+
+    # "前天"
+    if "前天" in message:
+        return _last_trading_day_on_or_before(today - timedelta(days=2))
+
+    # "上周X"
+    weekday_map = {"一": 0, "二": 1, "三": 2, "四": 3, "五": 4, "六": 5, "日": 6, "天": 6}
+    m = re.search(r"上[周週]([一二三四五六日天])", message)
+    if m:
+        target_wd = weekday_map.get(m.group(1))
+        if target_wd is not None:
+            days_back = (today.weekday() - target_wd) % 7 or 7
+            return _last_trading_day_on_or_before(today - timedelta(days=days_back))
+
+    # "6月18日" / "06/18"
+    m = re.search(r"(\d{1,2})[月/](\d{1,2})[日号]?", message)
+    if m:
+        month, day = int(m.group(1)), int(m.group(2))
+        for year in (now.year, now.year - 1):
+            try:
+                d = datetime(year, month, day)
+                if d < today:
+                    return _last_trading_day_on_or_before(d)
+            except ValueError:
+                pass
+
+    # "2026-06-18" / "2026/06/18"
+    m = re.search(r"(\d{4})[-/](\d{1,2})[-/](\d{1,2})", message)
+    if m:
+        try:
+            d = datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+            if d < today:
+                return _last_trading_day_on_or_before(d)
+        except ValueError:
+            pass
+
+    return None
+
+
+def fetch_historical_market_overview(target_date: datetime) -> Dict[str, Any]:
+    """Fetch historical index data for a past date via AKShare."""
+    date_str = target_date.strftime("%Y%m%d")
+    result: Dict[str, Any] = {
+        "date": target_date.strftime("%Y-%m-%d"),
+        "indices": [],
+    }
+    for symbol, name in [("000001", "上证指数"), ("399001", "深证成指"), ("399006", "创业板指")]:
+        try:
+            df = ak.index_zh_a_hist(symbol=symbol, period="daily", start_date=date_str, end_date=date_str)
+            if df is not None and not df.empty:
+                row = df.iloc[-1]
+                result["indices"].append({
+                    "name": name,
+                    "open": safe_float(row.get("开盘")),
+                    "close": safe_float(row.get("收盘")),
+                    "high": safe_float(row.get("最高")),
+                    "low": safe_float(row.get("最低")),
+                    "change_percent": safe_float(row.get("涨跌幅")),
+                    "volume": safe_float(row.get("成交量")),
+                    "amount": safe_float(row.get("成交额")),
+                })
+        except Exception:
+            pass
+    return result
+
+
 def extract_stock_mentions(message: str, universe: pd.DataFrame) -> List[Dict[str, str]]:
     """Find A-share stock names or codes mentioned in message (max 3)."""
     found: Dict[str, str] = {}
@@ -2466,7 +2578,8 @@ def open_chat(payload: ChatPayload, authorization: Optional[str] = Header(None))
     lines = [
         f"你是专业的A股短中线投资分析助手，当前时间 {now_str}（北京时间）。",
         session_note,
-        "你能读取下方今日全部A股实时行情数据，据此给出具体判断。",
+        "【数据范围】系统今日已拉取全量A股实时行情，数据列在下方。对于历史日期，系统仅能提供指数收盘数据，无个股完整历史行情。",
+        "【重要规则】(1) 绝不要求用户手动粘贴或提供行情数据；(2) 若缺少某日个股数据，如实说明并基于可用数据作答；(3) 推荐股票必须基于下方实际数据，不能凭空编造。",
         "",
         "每次推荐股票必须包含以下结构（不能省略）：",
         "  股票代码 + 名称",
@@ -2521,6 +2634,23 @@ def open_chat(payload: ChatPayload, authorization: Optional[str] = Header(None))
             pe = s.get("pe_ratio")
             pe_str = f" PE{pe:.1f}" if pe else ""
             lines.append(f"  {s['name']}（{s['code']}）: 现价{price_str} 今日{chg_str} 成交额{amount_str}{pe_str}")
+
+    # Auto-detect historical date references and inject index data
+    hist_date = detect_historical_date(message)
+    if hist_date:
+        try:
+            hist = fetch_historical_market_overview(hist_date)
+            if hist["indices"]:
+                lines.append(f"\n【{hist['date']} 大盘收盘数据（AKShare）】")
+                for idx in hist["indices"]:
+                    chg = idx.get("change_percent")
+                    chg_s = f"{chg:+.2f}%" if chg is not None else "-"
+                    amount = idx.get("amount")
+                    amount_s = f" 成交额{amount/1e8:.0f}亿" if amount else ""
+                    lines.append(f"  {idx['name']}: 收{idx.get('close', '-')} {chg_s}{amount_s}")
+                lines.append("  （注：该日个股完整行情数据未在系统实时库中，以上为指数层面数据。尾盘个股推荐请基于当日盘面情绪和技术特征推断，不得编造具体价格。）")
+        except Exception:
+            pass
 
     system_prompt = "\n".join(lines)
 
