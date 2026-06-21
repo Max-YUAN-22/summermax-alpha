@@ -107,8 +107,26 @@ def init_db() -> None:
             buy_date   TEXT NOT NULL DEFAULT (date('now')),
             note       TEXT NOT NULL DEFAULT ''
         );
+
+        CREATE TABLE IF NOT EXISTS usage_log (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            email      TEXT NOT NULL,
+            action     TEXT NOT NULL DEFAULT 'chat',
+            cost       INTEGER NOT NULL DEFAULT 1,
+            model      TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
     """)
     conn.commit()
+
+    # Migrate: add balance + llm_model columns if they don't exist yet
+    for col, dfn in [("balance", "INTEGER NOT NULL DEFAULT 100"),
+                     ("llm_model", "TEXT NOT NULL DEFAULT ''")]:
+        try:
+            conn.execute(f"ALTER TABLE users ADD COLUMN {col} {dfn}")
+            conn.commit()
+        except Exception:
+            pass  # column already exists
 
     # Seed admin accounts from env vars
     for i in (1, 2):
@@ -371,7 +389,161 @@ def auth_me(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
     claims = _get_token_from_header(authorization)
     if not claims:
         raise HTTPException(status_code=401, detail="未登录或 Token 已过期")
-    return {"email": claims["sub"], "role": claims.get("role", "user")}
+    email = claims["sub"]
+    role = claims.get("role", "user")
+    balance = 999999  # admin gets unlimited display
+    llm_model = ""
+    if role != "admin":
+        try:
+            conn = get_db()
+            row = conn.execute("SELECT balance, llm_model FROM users WHERE email = ?", (email,)).fetchone()
+            conn.close()
+            if row:
+                balance = row["balance"]
+                llm_model = row["llm_model"] or ""
+        except Exception:
+            pass
+    return {"email": email, "role": role, "balance": balance, "llm_model": llm_model}
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+@app.post("/user/change-password")
+def change_password(payload: ChangePasswordRequest, authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+    claims = _get_token_from_header(authorization)
+    if not claims:
+        raise HTTPException(status_code=401, detail="请先登录")
+    email = claims["sub"]
+    conn = get_db()
+    user = conn.execute("SELECT password_hash FROM users WHERE email = ?", (email,)).fetchone()
+    if not user:
+        conn.close()
+        raise HTTPException(status_code=404, detail="用户不存在")
+    if not _verify_password(payload.current_password, user["password_hash"]):
+        conn.close()
+        raise HTTPException(status_code=400, detail="当前密码不正确")
+    if len(payload.new_password) < 8:
+        conn.close()
+        raise HTTPException(status_code=400, detail="新密码至少需要 8 位")
+    new_hash = _hash_password(payload.new_password)
+    conn.execute("UPDATE users SET password_hash = ? WHERE email = ?", (new_hash, email))
+    conn.commit()
+    conn.close()
+    return {"ok": True, "message": "密码修改成功"}
+
+
+class UserSettingsRequest(BaseModel):
+    llm_model: Optional[str] = None
+
+
+@app.get("/user/settings")
+def get_user_settings(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+    claims = _get_token_from_header(authorization)
+    if not claims:
+        raise HTTPException(status_code=401, detail="请先登录")
+    email = claims["sub"]
+    try:
+        conn = get_db()
+        row = conn.execute("SELECT balance, llm_model FROM users WHERE email = ?", (email,)).fetchone()
+        conn.close()
+        if row:
+            return {"balance": row["balance"], "llm_model": row["llm_model"] or ""}
+    except Exception:
+        pass
+    return {"balance": 0, "llm_model": ""}
+
+
+@app.put("/user/settings")
+def update_user_settings(payload: UserSettingsRequest, authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+    claims = _get_token_from_header(authorization)
+    if not claims:
+        raise HTTPException(status_code=401, detail="请先登录")
+    email = claims["sub"]
+    allowed_models = {"", "gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "gpt-4-turbo", "gpt-3.5-turbo"}
+    model = (payload.llm_model or "").strip()
+    if model not in allowed_models:
+        raise HTTPException(status_code=400, detail=f"不支持的模型: {model}")
+    try:
+        conn = get_db()
+        conn.execute("UPDATE users SET llm_model = ? WHERE email = ?", (model, email))
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return {"ok": True, "llm_model": model}
+
+
+@app.get("/admin/users")
+def admin_list_users(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+    claims = _get_token_from_header(authorization)
+    if not claims or claims.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="需要管理员权限")
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT id, email, role, balance, llm_model, created_at FROM users ORDER BY id ASC"
+    ).fetchall()
+    conn.close()
+    return {"users": [dict(r) for r in rows]}
+
+
+class AdminBalanceRequest(BaseModel):
+    email: str
+    delta: int  # positive = add, negative = deduct
+
+
+@app.post("/admin/balance")
+def admin_adjust_balance(payload: AdminBalanceRequest, authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+    claims = _get_token_from_header(authorization)
+    if not claims or claims.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="需要管理员权限")
+    conn = get_db()
+    user = conn.execute("SELECT balance FROM users WHERE email = ?", (payload.email.strip().lower(),)).fetchone()
+    if not user:
+        conn.close()
+        raise HTTPException(status_code=404, detail="用户不存在")
+    new_balance = max(0, user["balance"] + payload.delta)
+    conn.execute("UPDATE users SET balance = ? WHERE email = ?", (new_balance, payload.email.strip().lower()))
+    conn.commit()
+    conn.close()
+    return {"ok": True, "email": payload.email, "new_balance": new_balance}
+
+
+@app.get("/admin/usage")
+def admin_usage_log(
+    limit: int = 50,
+    authorization: Optional[str] = Header(None),
+) -> Dict[str, Any]:
+    claims = _get_token_from_header(authorization)
+    if not claims or claims.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="需要管理员权限")
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT email, action, cost, model, created_at FROM usage_log ORDER BY id DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    conn.close()
+    return {"logs": [dict(r) for r in rows]}
+
+
+@app.get("/user/usage")
+def user_usage_log(
+    limit: int = 20,
+    authorization: Optional[str] = Header(None),
+) -> Dict[str, Any]:
+    claims = _get_token_from_header(authorization)
+    if not claims:
+        raise HTTPException(status_code=401, detail="请先登录")
+    email = claims["sub"]
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT action, cost, model, created_at FROM usage_log WHERE email = ? ORDER BY id DESC LIMIT ?",
+        (email, limit),
+    ).fetchall()
+    conn.close()
+    return {"usage": [dict(r) for r in rows]}
 
 
 # ── Per-user chat history ─────────────────────────────────────────────────────
@@ -2751,11 +2923,32 @@ class ChatPayload(BaseModel):
 
 @app.post("/chat")
 def open_chat(payload: ChatPayload, authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+    claims = _get_token_from_header(authorization)
+
     # If REQUIRE_AUTH is enabled, validate JWT
-    if REQUIRE_AUTH:
-        claims = _get_token_from_header(authorization)
-        if not claims:
-            raise HTTPException(status_code=401, detail="请先登录再使用 AI 分析师")
+    if REQUIRE_AUTH and not claims:
+        raise HTTPException(status_code=401, detail="请先登录再使用 AI 分析师")
+
+    # Resolve user-preferred model and enforce balance (skip for admin / unauthenticated)
+    user_email: Optional[str] = claims["sub"] if claims else None
+    user_role: str = claims.get("role", "user") if claims else "user"
+    preferred_model: str = ""
+
+    if user_email and user_role != "admin":
+        try:
+            conn = get_db()
+            row = conn.execute("SELECT balance, llm_model FROM users WHERE email = ?", (user_email,)).fetchone()
+            conn.close()
+            if row:
+                if row["balance"] <= 0:
+                    raise HTTPException(status_code=402, detail="积分不足，请联系管理员充值")
+                preferred_model = row["llm_model"] or ""
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+
+    active_model = preferred_model or os.getenv("OPENAI_MODEL", DEFAULT_LLM_MODEL)
 
     message = payload.message.strip()
     if not message:
@@ -2908,7 +3101,7 @@ def open_chat(payload: ChatPayload, authorization: Optional[str] = Header(None))
     try:
         for _round in range(6):
             resp = client.chat.completions.create(
-                model=os.getenv("OPENAI_MODEL", DEFAULT_LLM_MODEL),
+                model=active_model,
                 messages=messages,
                 tools=CHAT_TOOLS,
                 tool_choice="auto",
@@ -2943,13 +3136,26 @@ def open_chat(payload: ChatPayload, authorization: Optional[str] = Header(None))
                     })
             else:
                 reply = choice.message.content or ""
+                # Deduct 1 credit and log usage
+                if user_email and user_role != "admin":
+                    try:
+                        conn = get_db()
+                        conn.execute("UPDATE users SET balance = MAX(0, balance - 1) WHERE email = ?", (user_email,))
+                        conn.execute(
+                            "INSERT INTO usage_log (email, action, cost, model) VALUES (?, 'chat', 1, ?)",
+                            (user_email, active_model),
+                        )
+                        conn.commit()
+                        conn.close()
+                    except Exception:
+                        pass
                 return {
                     "content": reply,
                     "stocks_fetched": [{"code": s["code"], "name": s["name"]} for s in stock_contexts],
                 }
         # Fallback: exceeded max rounds, get final answer without tools
         resp = client.chat.completions.create(
-            model=os.getenv("OPENAI_MODEL", DEFAULT_LLM_MODEL),
+            model=active_model,
             messages=messages,
             max_tokens=2000,
             temperature=0.7,
