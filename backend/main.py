@@ -311,16 +311,30 @@ def auth_register(payload: RegisterRequest) -> Dict[str, Any]:
 @app.post("/auth/login")
 def auth_login(payload: LoginRequest) -> Dict[str, Any]:
     email = payload.email.strip().lower()
+    password = payload.password
 
-    conn = get_db()
-    user = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
-    conn.close()
+    # Check admin accounts from env vars first (works without any database)
+    for i in (1, 2):
+        admin_email = os.getenv(f"ADMIN_EMAIL_{i}", "").strip().lower()
+        admin_pw = os.getenv(f"ADMIN_PASSWORD_{i}", "").strip()
+        if admin_email and email == admin_email:
+            if not admin_pw or not secrets.compare_digest(password, admin_pw):
+                raise HTTPException(status_code=401, detail="邮箱或密码错误")
+            token = _create_token(email, "admin")
+            return {"token": token, "email": email, "role": "admin", "message": "登录成功"}
 
-    if not user or not _verify_password(payload.password, user["password_hash"]):
-        raise HTTPException(status_code=401, detail="邮箱或密码错误")
+    # Fall back to database for regular registered users
+    try:
+        conn = get_db()
+        user = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+        conn.close()
+        if user and _verify_password(password, user["password_hash"]):
+            token = _create_token(email, user["role"])
+            return {"token": token, "email": email, "role": user["role"], "message": "登录成功"}
+    except Exception:
+        pass
 
-    token = _create_token(email, user["role"])
-    return {"token": token, "email": email, "role": user["role"], "message": "登录成功"}
+    raise HTTPException(status_code=401, detail="邮箱或密码错误")
 
 
 @app.get("/auth/me")
