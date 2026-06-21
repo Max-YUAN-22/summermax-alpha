@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SummerMax Alpha · 个股分析</title>
+    <style>
+      :root {
+        --bg: #07111f;
+        --panel: rgba(10, 22, 38, 0.9);
+        --line: rgba(132, 157, 189, 0.15);
+        --text: #edf4ff;
+        --muted: #8ea3bd;
+        --muted-2: #5a7490;
+        --accent: #66d1ff;
+        --bull: #2ed09a;
+        --bear: #ff6b7e;
+        --warn: #f5c26b;
+      }
+
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body { min-height: 100%; color: var(--text); font-family: "PingFang SC","Noto Sans SC","Avenir Next",sans-serif; font-size: 13px; background: #07111f; }
+      ::-webkit-scrollbar { width: 4px; height: 4px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: rgba(102,209,255,0.18); border-radius: 2px; }
+      .up { color: var(--bull); }
+      .down { color: var(--bear); }
+
+      /* ── Topbar ── */
+      .topbar {
+        height: 48px; display: flex; align-items: center; gap: 12px;
+        padding: 0 16px; border-bottom: 1px solid var(--line);
+        background: rgba(6,15,28,0.98); position: sticky; top: 0; z-index: 100;
+      }
+      .brand-mark { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: linear-gradient(135deg,rgba(102,209,255,0.22),rgba(36,163,135,0.28)); border: 1px solid rgba(102,209,255,0.2); font-size: 0.78rem; font-weight: 800; flex-shrink: 0; }
+      .brand-name { font-size: 0.88rem; font-weight: 700; white-space: nowrap; }
+      .topbar-divider { width: 1px; height: 20px; background: var(--line); flex-shrink: 0; }
+      .page-nav { display: flex; gap: 2px; }
+      .page-nav a { padding: 5px 10px; border-radius: 8px; text-decoration: none; color: var(--muted); font-size: 0.82rem; transition: background 0.15s, color 0.15s; }
+      .page-nav a:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+      .page-nav a.active { background: rgba(102,209,255,0.12); color: var(--accent); font-weight: 700; }
+      .topbar-spacer { flex: 1; }
+      .user-badge { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+      .user-email { font-size: 0.76rem; color: var(--muted); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .user-role { font-size: 0.66rem; padding: 2px 7px; border-radius: 5px; background: rgba(102,209,255,0.1); border: 1px solid rgba(102,209,255,0.15); color: var(--muted-2); }
+      .user-role.admin { background: rgba(255,195,50,0.12); border-color: rgba(255,195,50,0.2); color: #ffc332; }
+      .logout-btn { padding: 4px 10px; border-radius: 7px; border: 1px solid rgba(132,157,189,0.2); background: transparent; color: var(--muted-2); font-size: 0.74rem; cursor: pointer; transition: color 0.15s,border-color 0.15s; }
+      .logout-btn:hover { color: var(--bear); border-color: rgba(255,107,126,0.3); }
+      .back-btn { padding: 5px 12px; border-radius: 8px; border: 1px solid rgba(132,157,189,0.2); background: transparent; color: var(--muted-2); font-size: 0.76rem; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; transition: color 0.15s,border-color 0.15s; }
+      .back-btn:hover { color: var(--accent); border-color: rgba(102,209,255,0.3); }
+
+      /* ── Hero bar ── */
+      .hero {
+        padding: 16px 20px 14px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(5,12,24,0.7);
+        display: flex; align-items: flex-start; gap: 24px; flex-wrap: wrap;
+      }
+      .hero-id { display: flex; flex-direction: column; gap: 2px; min-width: 120px; }
+      .hero-code { font-size: 0.72rem; font-weight: 700; color: var(--accent); letter-spacing: 0.05em; }
+      .hero-name { font-size: 1.4rem; font-weight: 800; letter-spacing: -0.01em; }
+      .hero-price-block { display: flex; align-items: baseline; gap: 10px; }
+      .hero-price { font-size: 2rem; font-weight: 800; letter-spacing: -0.02em; }
+      .hero-chg { font-size: 1rem; font-weight: 700; }
+      .hero-meta { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; margin-top: 6px; }
+      .hero-stat { display: flex; flex-direction: column; gap: 1px; }
+      .hero-stat-label { font-size: 0.66rem; color: var(--muted-2); }
+      .hero-stat-val { font-size: 0.82rem; font-weight: 600; }
+      .hero-spacer { flex: 1; }
+      .hero-score-block { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+      .hero-score { font-size: 2.4rem; font-weight: 900; letter-spacing: -0.03em; }
+      .hero-score-label { font-size: 0.68rem; color: var(--muted-2); }
+      .hero-decision { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 8px; font-size: 0.8rem; font-weight: 700; }
+      .hero-decision.bull { background: rgba(46,208,154,0.14); border: 1px solid rgba(46,208,154,0.28); color: var(--bull); }
+      .hero-decision.bear { background: rgba(255,107,126,0.1); border: 1px solid rgba(255,107,126,0.22); color: var(--bear); }
+      .hero-decision.neutral { background: rgba(132,157,189,0.1); border: 1px solid rgba(132,157,189,0.18); color: var(--muted); }
+
+      /* ── Layout ── */
+      .shell { display: grid; grid-template-columns: 1fr 320px; gap: 0; min-height: calc(100vh - 160px); }
+
+      /* ── Left main ── */
+      .main-col { padding: 16px 20px; display: flex; flex-direction: column; gap: 18px; }
+
+      /* ── Chart card ── */
+      .card { background: rgba(10,22,38,0.6); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+      .card-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+      .card-title { font-size: 0.8rem; font-weight: 700; color: var(--muted); }
+      .card-body { padding: 14px; }
+
+      .chart-tabs { display: flex; gap: 3px; margin-left: auto; }
+      .chart-tab { padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(132,157,189,0.15); background: transparent; color: var(--muted-2); font-size: 0.72rem; cursor: pointer; font-family: inherit; transition: all 0.12s; }
+      .chart-tab:hover { color: var(--text); }
+      .chart-tab.active { background: rgba(102,209,255,0.12); color: var(--accent); border-color: rgba(102,209,255,0.22); font-weight: 700; }
+
+      canvas { display: block; width: 100%; border-radius: 6px; }
+      #klineCanvas { height: 260px; }
+      #volumeCanvas { height: 80px; margin-top: 2px; }
+      #intradayCanvas { height: 200px; }
+      #flowCanvas { height: 180px; }
+
+      .chart-loading { height: 260px; display: flex; align-items: center; justify-content: center; color: var(--muted-2); font-size: 0.8rem; }
+
+      /* ── Signal grid ── */
+      .signal-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+      .signal-item { padding: 9px 11px; border-radius: 9px; border: 1px solid var(--line); background: rgba(10,22,38,0.5); display: flex; flex-direction: column; gap: 3px; }
+      .signal-name { font-size: 0.65rem; color: var(--muted-2); }
+      .signal-val { font-size: 0.9rem; font-weight: 700; }
+      .signal-label { font-size: 0.65rem; }
+      .signal-item.bull { border-color: rgba(46,208,154,0.22); }
+      .signal-item.bear { border-color: rgba(255,107,126,0.22); }
+      .signal-item.neutral { border-color: rgba(132,157,189,0.15); }
+
+      /* ── Capital flow bar ── */
+      .flow-legend { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+      .flow-item { display: flex; align-items: center; gap: 5px; font-size: 0.7rem; color: var(--muted-2); }
+      .flow-dot { width: 8px; height: 8px; border-radius: 2px; }
+
+      /* ── Right sidebar ── */
+      .sidebar { border-left: 1px solid var(--line); padding: 16px 14px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
+
+      /* ── Indicator card ── */
+      .ind-section { display: flex; flex-direction: column; gap: 6px; }
+      .ind-label { font-size: 0.68rem; font-weight: 700; color: var(--muted-2); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 2px; }
+      .ind-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid rgba(132,157,189,0.07); font-size: 0.78rem; }
+      .ind-row:last-child { border-bottom: none; }
+      .ind-key { color: var(--muted); }
+      .ind-val { font-weight: 700; }
+      .ind-gauge { height: 3px; border-radius: 2px; margin-top: 2px; background: rgba(132,157,189,0.12); overflow: hidden; }
+      .ind-gauge-fill { height: 100%; border-radius: 2px; background: var(--accent); transition: width 0.4s; }
+
+      /* ── AI report ── */
+      .ai-report-btn { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid rgba(102,209,255,0.25); background: linear-gradient(135deg,rgba(102,209,255,0.14),rgba(36,163,135,0.1)); color: var(--accent); font-family: inherit; font-size: 0.82rem; font-weight: 700; cursor: pointer; transition: background 0.15s; }
+      .ai-report-btn:hover { background: linear-gradient(135deg,rgba(102,209,255,0.24),rgba(36,163,135,0.18)); }
+      .ai-report-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+      .ai-report-content { margin-top: 8px; padding: 10px; background: rgba(10,22,38,0.8); border: 1px solid var(--line); border-radius: 9px; font-size: 0.78rem; line-height: 1.7; color: var(--text); display: none; }
+      .ai-report-content.visible { display: block; }
+
+      /* ── Skeleton ── */
+      .skel { background: linear-gradient(90deg,rgba(132,157,189,0.07) 25%,rgba(132,157,189,0.14) 50%,rgba(132,157,189,0.07) 75%); background-size: 400px 100%; animation: skel 1.4s infinite; border-radius: 4px; height: 14px; margin: 3px 0; }
+      @keyframes skel { 0% { background-position: -400px 0; } 100% { background-position: 400px 0; } }
+
+      /* ── Scorecard ring ── */
+      .score-ring-wrap { display: flex; justify-content: center; align-items: center; padding: 10px 0 4px; }
+      .score-ring { width: 84px; height: 84px; }
+
+      /* ── Responsive ── */
+      @media (max-width: 900px) {
+        .shell { grid-template-columns: 1fr; }
+        .sidebar { border-left: none; border-top: 1px solid var(--line); }
+        .signal-grid { grid-template-columns: repeat(2,1fr); }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand-mark">Sα</div>
+      <span class="brand-name">SummerMax Alpha</span>
+      <div class="topbar-divider"></div>
+      <nav class="page-nav">
+        <a href="index.html">首页</a>
+        <a href="scan.html">市场扫描</a>
+        <a href="workspace.html">工作台</a>
+        <a href="chat.html">AI 分析师</a>
+      </nav>
+      <div class="topbar-spacer"></div>
+      <div class="user-badge" id="userBadge"></div>
+      <a class="back-btn" id="backBtn" href="scan.html">← 返回</a>
+    </header>
+
+    <!-- Hero bar -->
+    <div class="hero" id="hero">
+      <div class="hero-id">
+        <span class="hero-code" id="heroCode">------</span>
+        <span class="hero-name" id="heroName">加载中…</span>
+        <div class="hero-price-block">
+          <span class="hero-price" id="heroPrice">--</span>
+          <span class="hero-chg" id="heroChg">--</span>
+        </div>
+      </div>
+      <div class="hero-meta" id="heroMeta"></div>
+      <div class="hero-spacer"></div>
+      <div class="hero-score-block">
+        <span class="hero-score" id="heroScore">--</span>
+        <span class="hero-score-label">综合评分 / 100</span>
+        <div class="hero-decision neutral" id="heroDecision">评估中…</div>
+      </div>
+    </div>
+
+    <!-- Main content -->
+    <div class="shell">
+      <div class="main-col">
+
+        <!-- K-line chart -->
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">行情走势</span>
+            <div class="chart-tabs">
+              <button class="chart-tab active" data-period="daily">日K</button>
+              <button class="chart-tab" data-period="60">60分</button>
+              <button class="chart-tab" data-period="15">15分</button>
+            </div>
+          </div>
+          <div class="card-body" style="padding:10px 12px 12px">
+            <div id="chartLoading" class="chart-loading">正在加载K线数据…</div>
+            <canvas id="klineCanvas" style="display:none"></canvas>
+            <canvas id="volumeCanvas" style="display:none"></canvas>
+          </div>
+        </div>
+
+        <!-- Technical signals -->
+        <div class="card">
+          <div class="card-head"><span class="card-title">技术信号</span></div>
+          <div class="card-body">
+            <div class="signal-grid" id="signalGrid">
+              <div class="skel" style="height:70px;border-radius:9px"></div>
+              <div class="skel" style="height:70px;border-radius:9px"></div>
+              <div class="skel" style="height:70px;border-radius:9px"></div>
+              <div class="skel" style="height:70px;border-radius:9px"></div>
+              <div class="skel" style="height:70px;border-radius:9px"></div>
+              <div class="skel" style="height:70px;border-radius:9px"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Capital flow -->
+        <div class="card">
+          <div class="card-head"><span class="card-title">主力资金流向（近10日）</span></div>
+          <div class="card-body" style="padding:10px 12px 12px">
+            <div class="flow-legend">
+              <div class="flow-item"><div class="flow-dot" style="background:#2ed09a"></div>主力净流入</div>
+              <div class="flow-item"><div class="flow-dot" style="background:#ff6b7e"></div>主力净流出</div>
+              <div class="flow-item"><div class="flow-dot" style="background:rgba(102,209,255,0.6)"></div>收盘价</div>
+            </div>
+            <div id="flowLoading" style="height:140px;display:flex;align-items:center;justify-content:center;color:var(--muted-2);font-size:0.8rem">正在加载资金数据…</div>
+            <canvas id="flowCanvas" style="display:none"></canvas>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Sidebar -->
+      <div class="sidebar">
+
+        <!-- AI report -->
+        <div>
+          <div class="ind-label">AI 深度报告</div>
+          <button class="ai-report-btn" id="aiReportBtn">生成 AI 分析报告</button>
+          <div class="ai-report-content" id="aiReportContent"></div>
+        </div>
+
+        <!-- Score ring -->
+        <div>
+          <div class="ind-label">综合评分</div>
+          <div class="score-ring-wrap">
+            <svg class="score-ring" id="scoreRing" viewBox="0 0 84 84">
+              <circle cx="42" cy="42" r="36" fill="none" stroke="rgba(132,157,189,0.12)" stroke-width="6"/>
+              <circle id="scoreArc" cx="42" cy="42" r="36" fill="none" stroke="var(--accent)" stroke-width="6" stroke-linecap="round" stroke-dasharray="226" stroke-dashoffset="226" transform="rotate(-90 42 42)" style="transition:stroke-dashoffset 0.8s ease"/>
+              <text x="42" y="47" text-anchor="middle" fill="var(--text)" font-size="16" font-weight="900" id="scoreRingText">--</text>
+            </svg>
+          </div>
+        </div>
+
+        <!-- Indicators -->
+        <div class="ind-section">
+          <div class="ind-label">技术指标</div>
+          <div id="indTable">
+            <div class="skel"></div><div class="skel"></div><div class="skel"></div>
+            <div class="skel"></div><div class="skel"></div><div class="skel"></div>
+          </div>
+        </div>
+
+        <!-- Risk -->
+        <div class="ind-section">
+          <div class="ind-label">风险评估</div>
+          <div id="riskTable">
+            <div class="skel"></div><div class="skel"></div>
+          </div>
+        </div>
+
+        <!-- Links -->
+        <div style="margin-top:auto;padding-top:12px;border-top:1px solid var(--line)">
+          <a id="workspaceLink" href="workspace.html" style="display:block;text-align:center;padding:8px;border-radius:8px;border:1px solid rgba(132,157,189,0.2);color:var(--muted-2);text-decoration:none;font-size:0.76rem;transition:all 0.15s" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--muted-2)'">
+            在工作台深度分析 →
+          </a>
+          <a id="chatLink" href="chat.html" style="display:block;text-align:center;padding:8px;border-radius:8px;border:1px solid rgba(102,209,255,0.15);color:var(--accent);text-decoration:none;font-size:0.76rem;margin-top:6px;background:rgba(102,209,255,0.06);transition:all 0.15s" onmouseover="this.style.background='rgba(102,209,255,0.14)'" onmouseout="this.style.background='rgba(102,209,255,0.06)'">
+            在 AI 分析师中继续提问 →
+          </a>
+        </div>
+
+      </div>
+    </div>
+
+    <script src="stock.js"></script>
+  </body>
+</html>

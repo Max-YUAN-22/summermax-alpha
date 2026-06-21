@@ -2445,7 +2445,243 @@ def extract_stock_mentions(message: str, universe: pd.DataFrame) -> List[Dict[st
     return [{"code": code, "name": name} for code, name in found.items()]
 
 
+# ── Full market snapshot cache (powers screen_stocks tool) ────────────────────
+
+FULL_MARKET_CACHE: Dict[str, Any] = {"data": None, "loaded_at": None}
+FULL_MARKET_TTL = timedelta(minutes=5)
+_ALL_STOCK_FS = "m:0+t:6+f:!50,m:0+t:13+f:!50,m:0+t:80+f:!50,m:1+t:2+f:!50,m:1+t:23+f:!50"
+
+
+def get_full_market_snapshot() -> List[Dict[str, Any]]:
+    entry = FULL_MARKET_CACHE
+    if entry["data"] and entry["loaded_at"] and datetime.now() - entry["loaded_at"] < FULL_MARKET_TTL:
+        return entry["data"]
+    seen: set = set()
+    stocks: List[Dict[str, Any]] = []
+    for page in range(1, 10):
+        try:
+            resp = requests.get(
+                "https://82.push2.eastmoney.com/api/qt/clist/get",
+                params={
+                    "pn": page, "pz": "500", "po": "1", "np": "1",
+                    "ut": "bd1d9ddb04089700cf9c27f6f7426281",
+                    "fltt": "2", "invt": "2", "fid": "f3",
+                    "fs": _ALL_STOCK_FS,
+                    "fields": "f2,f3,f6,f8,f10,f11,f12,f14",
+                },
+                headers={**DEFAULT_HEADERS, "Referer": "https://quote.eastmoney.com/center/boardlist.html"},
+                timeout=12,
+            )
+            resp.raise_for_status()
+            diffs = (resp.json().get("data") or {}).get("diff") or []
+            if not diffs:
+                break
+            for item in diffs:
+                code = str(item.get("f12") or "").zfill(6)
+                if not code or code == "000000" or code in seen:
+                    continue
+                seen.add(code)
+                stocks.append({
+                    "code": code,
+                    "name": str(item.get("f14") or ""),
+                    "price": safe_float(item.get("f2")) or 0,
+                    "change_percent": safe_float(item.get("f3")) or 0,
+                    "amount": safe_float(item.get("f6")) or 0,
+                    "turnover_rate": safe_float(item.get("f8")) or 0,
+                    "vol_ratio": safe_float(item.get("f10")) or 0,
+                    "rise_speed": safe_float(item.get("f11")) or 0,
+                })
+        except Exception:
+            break
+    if stocks:
+        FULL_MARKET_CACHE["data"] = stocks
+        FULL_MARKET_CACHE["loaded_at"] = datetime.now()
+    return stocks
+
+
+# ── Chat tool definitions ─────────────────────────────────────────────────────
+
+CHAT_TOOLS: List[Dict[str, Any]] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "screen_stocks",
+            "description": (
+                "从全量A股中按条件筛选股票。支持涨跌幅、成交额、换手率、量比过滤和排序。"
+                "例如：筛换手率3-10%且涨幅2-8%且成交额>1亿的强势股。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "min_change_pct": {"type": "number", "description": "最小涨跌幅(%)，如 2.0"},
+                    "max_change_pct": {"type": "number", "description": "最大涨跌幅(%)，如 9.9"},
+                    "min_amount": {"type": "number", "description": "最小成交额(元)，如 1e8=1亿"},
+                    "min_turnover_pct": {"type": "number", "description": "最小换手率(%)"},
+                    "max_turnover_pct": {"type": "number", "description": "最大换手率(%)"},
+                    "min_vol_ratio": {"type": "number", "description": "最小量比"},
+                    "sort_by": {
+                        "type": "string",
+                        "enum": ["change_percent", "amount", "turnover_rate", "vol_ratio"],
+                        "description": "排序字段，默认 change_percent",
+                    },
+                    "limit": {"type": "integer", "description": "返回数量，默认30，最多50"},
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_stock_data",
+            "description": (
+                "获取某只A股的完整分析数据：实时行情、60日技术指标（MA/RSI/MACD/KDJ）、"
+                "综合评分、技术信号、风险评估和操作建议。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "code": {"type": "string", "description": "6位A股代码，如 '600519'"},
+                },
+                "required": ["code"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_sector_overview",
+            "description": "获取今日全部行业板块涨跌排名，包含成交额、涨跌家数、领涨股，用于判断资金方向和板块轮动。",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_sector_stocks",
+            "description": "获取指定行业板块内所有个股的今日实时行情，用于板块内选股。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sector_name": {
+                        "type": "string",
+                        "description": "板块中文名，如 '半导体'、'新能源车'、'人工智能'、'创新药'",
+                    },
+                },
+                "required": ["sector_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_capital_flow",
+            "description": "获取某只股票近10日主力资金净流入/流出趋势，判断机构持续进场还是出逃。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "code": {"type": "string", "description": "6位A股代码"},
+                },
+                "required": ["code"],
+            },
+        },
+    },
+]
+
+
+def execute_tool_call(name: str, args: Dict[str, Any], market_context: Optional[Dict[str, Any]]) -> Any:
+    if name == "screen_stocks":
+        try:
+            stocks = get_full_market_snapshot()
+        except Exception:
+            stocks = []
+        if not stocks and market_context:
+            stocks = list(market_context.get("top_movers") or [])
+        result = [s for s in stocks if (s.get("price") or 0) > 0 and s.get("name")]
+        min_chg = args.get("min_change_pct")
+        max_chg = args.get("max_change_pct")
+        min_amt = args.get("min_amount")
+        min_turn = args.get("min_turnover_pct")
+        max_turn = args.get("max_turnover_pct")
+        min_volr = args.get("min_vol_ratio")
+        if min_chg is not None:
+            result = [s for s in result if (s.get("change_percent") or 0) >= min_chg]
+        if max_chg is not None:
+            result = [s for s in result if (s.get("change_percent") or 0) <= max_chg]
+        if min_amt is not None:
+            result = [s for s in result if (s.get("amount") or 0) >= min_amt]
+        if min_turn is not None:
+            result = [s for s in result if (s.get("turnover_rate") or 0) >= min_turn]
+        if max_turn is not None:
+            result = [s for s in result if (s.get("turnover_rate") or 0) <= max_turn]
+        if min_volr is not None:
+            result = [s for s in result if (s.get("vol_ratio") or 0) >= min_volr]
+        sort_key = args.get("sort_by", "change_percent")
+        result.sort(key=lambda x: x.get(sort_key) or 0, reverse=True)
+        limit = min(int(args.get("limit", 30)), 50)
+        return {"total_matched": len(result), "stocks": result[:limit]}
+
+    if name == "get_stock_data":
+        code = str(args.get("code", "")).strip().zfill(6)
+        try:
+            snap = build_snapshot(code, include_llm=False)
+            return {
+                "code": code,
+                "name": snap.get("name"),
+                "realtime": snap.get("realtime"),
+                "indicators": snap.get("indicators"),
+                "scorecard": snap.get("scorecard"),
+                "analysis": {
+                    "summary": (snap.get("analysis") or {}).get("summary"),
+                    "signals": (snap.get("analysis") or {}).get("signals"),
+                    "aggregate_score": (snap.get("analysis") or {}).get("aggregate_score"),
+                },
+                "risk": snap.get("risk_assessment"),
+                "final_decision": snap.get("final_decision"),
+            }
+        except Exception as exc:
+            return {"error": str(exc), "code": code}
+
+    if name == "get_sector_overview":
+        try:
+            return {"sectors": fetch_sector_list()[:35]}
+        except Exception as exc:
+            return {"error": str(exc)}
+
+    if name == "get_sector_stocks":
+        sector_name = str(args.get("sector_name", ""))
+        try:
+            stocks = fetch_sector_stocks(sector_name)
+            return {"sector": sector_name, "count": len(stocks), "stocks": stocks[:50]}
+        except Exception as exc:
+            return {"error": str(exc), "sector": sector_name}
+
+    if name == "get_capital_flow":
+        code = str(args.get("code", "")).strip().zfill(6)
+        try:
+            return fetch_stock_fund_flow(code)
+        except Exception as exc:
+            return {"error": str(exc), "code": code}
+
+    return {"error": f"Unknown tool: {name}"}
+
+
 # ── New endpoints ──────────────────────────────────────────────────────────────
+
+@app.get("/market/stocks")
+def get_market_stocks() -> Dict[str, Any]:
+    """Full A-share market snapshot — proxied from EastMoney with server-side cache."""
+    try:
+        stocks = get_full_market_snapshot()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Market data fetch failed: {exc}") from exc
+    return {
+        "stocks": stocks,
+        "count": len(stocks),
+        "cached_at": FULL_MARKET_CACHE.get("loaded_at", datetime.now()).strftime("%Y-%m-%d %H:%M:%S")
+        if FULL_MARKET_CACHE.get("loaded_at") else None,
+    }
+
 
 @app.get("/market/overview")
 def get_market_overview() -> Dict[str, Any]:
@@ -2579,7 +2815,16 @@ def open_chat(payload: ChatPayload, authorization: Optional[str] = Header(None))
         f"你是专业的A股短中线投资分析助手，当前时间 {now_str}（北京时间）。",
         session_note,
         "【数据范围】系统今日已拉取全量A股实时行情，数据列在下方。对于历史日期，系统仅能提供指数收盘数据，无个股完整历史行情。",
-        "【重要规则】(1) 绝不要求用户手动粘贴或提供行情数据；(2) 若缺少某日个股数据，如实说明并基于可用数据作答；(3) 推荐股票必须基于下方实际数据，不能凭空编造。",
+        "【工具能力】你有权主动调用以下工具获取实时数据，无需等用户提供：",
+        "  • screen_stocks —— 从4500+只A股中按涨幅/成交额/换手率/量比筛选，支持多条件组合",
+        "  • get_stock_data —— 获取某只股票的完整技术指标（RSI/MACD/KDJ/均线）、综合评分、操作建议",
+        "  • get_sector_overview —— 获取全部行业板块今日涨跌排名、资金流向、领涨股",
+        "  • get_sector_stocks —— 获取某板块内所有个股今日行情",
+        "  • get_capital_flow —— 获取某股票近10日主力资金净流入趋势",
+        "【重要规则】",
+        "  (1) 绝不要求用户手动粘贴或提供行情数据——你有工具可以自己拿",
+        "  (2) 若用户要求推荐股票，必须先调用 screen_stocks 筛选，再用 get_stock_data 验证关键标的，然后基于实际数据给出推荐，不能凭空编造",
+        "  (3) 若缺少某日个股数据（如历史日期），如实说明并基于可用数据作答",
         "",
         "每次推荐股票必须包含以下结构（不能省略）：",
         "  股票代码 + 名称",
@@ -2654,20 +2899,62 @@ def open_chat(payload: ChatPayload, authorization: Optional[str] = Header(None))
 
     system_prompt = "\n".join(lines)
 
-    messages: List[Dict[str, str]] = [{"role": "system", "content": system_prompt}]
+    messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
     for h in payload.history[-10:]:
         if h.get("role") in ("user", "assistant") and h.get("content"):
             messages.append({"role": h["role"], "content": h["content"]})
     messages.append({"role": "user", "content": message})
 
     try:
+        for _round in range(6):
+            resp = client.chat.completions.create(
+                model=os.getenv("OPENAI_MODEL", DEFAULT_LLM_MODEL),
+                messages=messages,
+                tools=CHAT_TOOLS,
+                tool_choice="auto",
+                max_tokens=2000,
+                temperature=0.7,
+            )
+            choice = resp.choices[0]
+            if choice.finish_reason == "tool_calls":
+                tool_calls = choice.message.tool_calls or []
+                messages.append({
+                    "role": "assistant",
+                    "content": choice.message.content or "",
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                        }
+                        for tc in tool_calls
+                    ],
+                })
+                for tc in tool_calls:
+                    try:
+                        args = json.loads(tc.function.arguments or "{}")
+                    except json.JSONDecodeError:
+                        args = {}
+                    result = execute_tool_call(tc.function.name, args, payload.market_context)
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "content": json.dumps(result, ensure_ascii=False, default=str),
+                    })
+            else:
+                reply = choice.message.content or ""
+                return {
+                    "content": reply,
+                    "stocks_fetched": [{"code": s["code"], "name": s["name"]} for s in stock_contexts],
+                }
+        # Fallback: exceeded max rounds, get final answer without tools
         resp = client.chat.completions.create(
             model=os.getenv("OPENAI_MODEL", DEFAULT_LLM_MODEL),
             messages=messages,
-            max_tokens=1400,
+            max_tokens=2000,
             temperature=0.7,
         )
-        reply = resp.choices[0].message.content
+        reply = resp.choices[0].message.content or ""
         return {
             "content": reply,
             "stocks_fetched": [{"code": s["code"], "name": s["name"]} for s in stock_contexts],

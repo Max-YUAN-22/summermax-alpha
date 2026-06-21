@@ -143,7 +143,7 @@ async function emGet(params) {
   return (data.data || {}).diff || [];
 }
 
-// ── Full A-share fetch (parallel pages) ──────────────────────────────────────
+// ── Full A-share fetch (via backend proxy, falls back to EastMoney direct) ────
 
 const ALL_STOCK_FS = [
   "m:0+t:6+f:!50",
@@ -156,6 +156,16 @@ const ALL_STOCK_FS = [
 const STOCK_FIELDS = "f2,f3,f6,f8,f10,f11,f12,f14";
 
 async function fetchAllStocks() {
+  // Primary: go through our backend (avoids EastMoney CORS / Referer restrictions)
+  try {
+    const res = await fetch(`${getApiBase()}/market/stocks`);
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.stocks) && data.stocks.length > 10) return data.stocks;
+    }
+  } catch { /* backend sleeping, fall through to direct */ }
+
+  // Fallback: call EastMoney directly (9 pages × 500)
   const PAGE_SIZE = 500;
   const PAGES = 9;
   const pages = await Promise.all(
@@ -269,7 +279,7 @@ function renderMatrix() {
       <span class="mx-chg ${cls}">${chgText(s.change_percent)}</span>
       <span class="mx-amount">${fmtAmt(s.amount)}</span>
       <span class="mx-turn">${s.turnover_rate > 0 ? s.turnover_rate.toFixed(1) + "%" : "--"}</span>
-      <a href="workspace.html?code=${s.code}" class="btn-analyze-sm">分析</a>
+      <a href="stock.html?code=${s.code}" class="btn-analyze-sm">分析</a>
     `;
     fragment.appendChild(row);
   });
@@ -289,6 +299,7 @@ function renderMatrix() {
 
 async function initMatrix() {
   try {
+    matrixLoadingEl.innerHTML = `<div>正在连接服务器并加载全市场数据…<div style="margin-top:6px;font-size:0.72rem;color:var(--muted-2)">首次访问服务器冷启动约需 30-60 秒，请稍候</div></div>`;
     allStocks = await fetchAllStocks();
     matrixLoadingEl.style.display = "none";
     renderMatrix();
@@ -342,19 +353,13 @@ async function loadMarketBar() {
     const r = await fetch(`${apiBase}/market/overview`);
     const d = await r.json();
     if (Array.isArray(d.indices)) indices = d.indices;
-  } catch { /* ignore */ }
-  try {
-    const diffs = await emGet({ fid: "f3", pn: "1", pz: "10", po: "1", fs: "m:90 t:2 f:!50", fields: "f3,f12,f14" });
-    hotSectors = [...diffs]
-      .sort((a, b) => (Number(b.f3) || 0) - (Number(a.f3) || 0))
-      .slice(0, 5)
-      .map((item) => ({ name: String(item.f14 || ""), change_percent: Number(item.f3) || 0 }));
-  } catch { /* ignore */ }
+    if (Array.isArray(d.hot_sectors)) hotSectors = d.hot_sectors.slice(0, 5);
+  } catch { /* ignore – backend may be cold-starting */ }
 
   marketCtx = { indices, hot_sectors: hotSectors, generated_at: new Date().toLocaleString("zh-CN") };
 
   if (!indices.length && !hotSectors.length) {
-    marketBarEl.innerHTML = `<span class="mkt-loading">市场数据暂不可用（非交易时段）</span>`;
+    marketBarEl.innerHTML = `<span class="mkt-loading">市场数据暂不可用（非交易时段或服务器启动中）</span>`;
     return;
   }
 

@@ -174,7 +174,7 @@ async function loadSectorStocks(sectorName) {
             <span class="sr2-chg ${cls}">${chgText(item.f3)}</span>
             <span class="sr2-amount">${fmtAmount(item.f6)}</span>
             <span class="sr2-turn">${item.f8 != null ? fmt(item.f8) + "%" : "--"}</span>
-            <a href="workspace.html?code=${code}" class="btn-analyze-stock">分析</a>
+            <a href="stock.html?code=${code}" class="btn-analyze-stock">分析</a>
           </div>
         `;
       }).join("")}
