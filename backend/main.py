@@ -2447,10 +2447,15 @@ def fetch_index_quotes_sina() -> List[Dict[str, Any]]:
 # Sector code cache populated by fetch_sector_list(); avoids a second HTTP call in
 # fetch_sector_stocks() when the caller already rendered the sector list.
 SECTOR_CODE_CACHE: Dict[str, str] = {}
+_SECTOR_LIST_CACHE: Dict[str, Any] = {"data": None, "loaded_at": None}
+_SECTOR_LIST_TTL = timedelta(minutes=10)
 
 
 def fetch_sector_list() -> List[Dict[str, Any]]:
     """Industry sectors via direct EastMoney push API (bypasses AKShare which sends no headers)."""
+    entry = _SECTOR_LIST_CACHE
+    if entry["data"] and entry["loaded_at"] and datetime.now() - entry["loaded_at"] < _SECTOR_LIST_TTL:
+        return entry["data"]
     url = "https://82.push2.eastmoney.com/api/qt/clist/get"
     params = {
         "pn": "1",
@@ -2492,6 +2497,8 @@ def fetch_sector_list() -> List[Dict[str, Any]]:
             "leader_change": safe_float(item.get("f136")),
         })
     results.sort(key=lambda x: (x["change_percent"] is not None, x["change_percent"] or 0), reverse=True)
+    _SECTOR_LIST_CACHE["data"] = results
+    _SECTOR_LIST_CACHE["loaded_at"] = datetime.now()
     return results
 
 
@@ -2723,6 +2730,10 @@ def get_full_market_snapshot() -> List[Dict[str, Any]]:
 def _prewarm_market_cache() -> None:
     try:
         get_full_market_snapshot()
+    except Exception:
+        pass
+    try:
+        fetch_sector_list()
     except Exception:
         pass
 

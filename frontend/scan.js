@@ -31,11 +31,11 @@ function fmtAmount(value) {
 
 // ── Retry helper ──────────────────────────────────────────────────────────────
 
-async function apiFetch(path, retries = 2, delayMs = 8000) {
+async function apiFetch(path, retries = 4, delayMs = 12000) {
   const url = `${getApiBase()}${path}`;
   for (let i = 0; i <= retries; i++) {
     try {
-      const res = await fetch(url);
+      const res = await fetch(url, { signal: AbortSignal.timeout(20000) });
       if (res.ok) return res;
       throw new Error(`HTTP ${res.status}`);
     } catch (err) {
@@ -59,11 +59,22 @@ let activeSectorRow = null;
 // ── Load sector list via backend proxy ────────────────────────────────────────
 
 async function loadSectors() {
-  if (sectorLoadingEl) sectorLoadingEl.style.display = "block";
+  if (sectorLoadingEl) {
+    sectorLoadingEl.style.display = "block";
+    sectorLoadingEl.textContent = "正在连接服务器…（首次加载约需 30 秒）";
+  }
   if (sectorListEl) sectorListEl.innerHTML = "";
+
+  // Update loading text after first retry to signal cold start
+  const wakeTimer = setTimeout(() => {
+    if (sectorLoadingEl && sectorLoadingEl.style.display !== "none") {
+      sectorLoadingEl.textContent = "服务器正在唤醒，请稍等…";
+    }
+  }, 15000);
 
   try {
     const res = await apiFetch("/market/sectors");
+    clearTimeout(wakeTimer);
     const data = await res.json();
     const sectors = data.sectors || [];
 
@@ -103,6 +114,7 @@ async function loadSectors() {
     });
 
   } catch (err) {
+    clearTimeout(wakeTimer);
     if (sectorLoadingEl) sectorLoadingEl.style.display = "none";
     if (sectorListEl) sectorListEl.innerHTML = `
       <div class="empty-note">
