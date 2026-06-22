@@ -902,3 +902,5 @@ async function init() {
 }
 
 init();
+
+setInterval(() => { fetch(`${getApiBase()}/ping`).catch(() => {}); }, 10 * 60 * 1000);

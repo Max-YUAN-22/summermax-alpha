@@ -31,11 +31,11 @@ function fmtAmount(value) {
 
 // ── Retry helper ──────────────────────────────────────────────────────────────
 
-async function apiFetch(path, retries = 4, delayMs = 12000) {
+async function apiFetch(path, retries = 4, delayMs = 8000) {
   const url = `${getApiBase()}${path}`;
   for (let i = 0; i <= retries; i++) {
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(20000) });
+      const res = await fetch(url, { signal: AbortSignal.timeout(50000) });
       if (res.ok) return res;
       throw new Error(`HTTP ${res.status}`);
     } catch (err) {
@@ -183,3 +183,8 @@ async function loadSectorStocks(sectorName) {
 }
 
 loadSectors();
+
+// Keep-alive ping every 10 minutes so Render doesn't sleep
+setInterval(() => {
+  fetch(`${getApiBase()}/ping`).catch(() => {});
+}, 10 * 60 * 1000);

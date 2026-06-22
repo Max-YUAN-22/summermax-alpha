@@ -289,6 +289,13 @@ async def disable_frontend_caching(request: Request, call_next):
     return response
 
 
+# ── Health / keep-alive ───────────────────────────────────────────────────────
+
+@app.get("/ping")
+def ping() -> Dict[str, str]:
+    return {"status": "ok"}
+
+
 # ── Auth routes ───────────────────────────────────────────────────────────────
 
 @app.post("/auth/send-code")
