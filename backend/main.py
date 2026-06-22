@@ -2704,34 +2704,78 @@ def get_full_market_snapshot() -> List[Dict[str, Any]]:
         entry = FULL_MARKET_CACHE
         if entry["data"] and entry["loaded_at"] and datetime.now() - entry["loaded_at"] < FULL_MARKET_TTL:
             return entry["data"]
+
+        # Primary: AKShare (one call, all A-shares)
+        stocks: List[Dict[str, Any]] = []
         try:
             df = ak.stock_zh_a_spot_em()
+            if df is not None and not df.empty:
+                for _, row in df.iterrows():
+                    code = str(row.get("代码") or "").zfill(6)
+                    if not code or code == "000000":
+                        continue
+                    price = safe_float(row.get("最新价")) or 0
+                    if price <= 0:
+                        continue
+                    stocks.append({
+                        "code": code,
+                        "name": str(row.get("名称") or ""),
+                        "price": price,
+                        "change_percent": safe_float(row.get("涨跌幅")) or 0,
+                        "amount": safe_float(row.get("成交额")) or 0,
+                        "turnover_rate": safe_float(row.get("换手率")) or 0,
+                        "vol_ratio": safe_float(row.get("量比")) or 0,
+                        "rise_speed": safe_float(row.get("涨速")) or 0,
+                    })
         except Exception:
-            return entry["data"] or []
-        if df is None or df.empty:
-            return entry["data"] or []
-        stocks: List[Dict[str, Any]] = []
-        for _, row in df.iterrows():
-            code = str(row.get("代码") or "").zfill(6)
-            if not code or code == "000000":
-                continue
-            price = safe_float(row.get("最新价")) or 0
-            if price <= 0:
-                continue
-            stocks.append({
-                "code": code,
-                "name": str(row.get("名称") or ""),
-                "price": price,
-                "change_percent": safe_float(row.get("涨跌幅")) or 0,
-                "amount": safe_float(row.get("成交额")) or 0,
-                "turnover_rate": safe_float(row.get("换手率")) or 0,
-                "vol_ratio": safe_float(row.get("量比")) or 0,
-                "rise_speed": safe_float(row.get("涨速")) or 0,
-            })
+            pass
+
+        # Fallback: EastMoney direct pagination (if AKShare failed or returned empty)
+        if not stocks:
+            _fs = "m:0+t:6+f:!50,m:0+t:13+f:!50,m:0+t:80+f:!50,m:1+t:2+f:!50,m:1+t:23+f:!50"
+            seen: set = set()
+            for page in range(1, 12):
+                try:
+                    resp = requests.get(
+                        "https://82.push2.eastmoney.com/api/qt/clist/get",
+                        params={
+                            "pn": page, "pz": "500", "po": "1", "np": "1",
+                            "ut": "bd1d9ddb04089700cf9c27f6f7426281",
+                            "fltt": "2", "invt": "2", "fid": "f3", "fs": _fs,
+                            "fields": "f2,f3,f6,f8,f10,f11,f12,f14",
+                        },
+                        headers={**DEFAULT_HEADERS, "Referer": "https://quote.eastmoney.com/center/boardlist.html"},
+                        timeout=10,
+                    )
+                    resp.raise_for_status()
+                    diffs = (resp.json().get("data") or {}).get("diff") or []
+                    if not diffs:
+                        break
+                    for item in diffs:
+                        code = str(item.get("f12") or "").zfill(6)
+                        if not code or code == "000000" or code in seen:
+                            continue
+                        seen.add(code)
+                        price = safe_float(item.get("f2")) or 0
+                        if price <= 0:
+                            continue
+                        stocks.append({
+                            "code": code,
+                            "name": str(item.get("f14") or ""),
+                            "price": price,
+                            "change_percent": safe_float(item.get("f3")) or 0,
+                            "amount": safe_float(item.get("f6")) or 0,
+                            "turnover_rate": safe_float(item.get("f8")) or 0,
+                            "vol_ratio": safe_float(item.get("f10")) or 0,
+                            "rise_speed": safe_float(item.get("f11")) or 0,
+                        })
+                except Exception:
+                    break
+
         if stocks:
             FULL_MARKET_CACHE["data"] = stocks
             FULL_MARKET_CACHE["loaded_at"] = datetime.now()
-        return stocks
+        return stocks if stocks else (entry["data"] or [])
 
 
 def _prewarm_market_cache() -> None:
@@ -2846,7 +2890,14 @@ def execute_tool_call(name: str, args: Dict[str, Any], market_context: Optional[
             stocks = []
         if not stocks and market_context:
             stocks = list(market_context.get("top_movers") or [])
-        result = [s for s in stocks if (s.get("price") or 0) > 0 and s.get("name")]
+        if not stocks:
+            return {
+                "total_matched": 0, "stocks": [],
+                "data_status": "unavailable",
+                "note": "全市场行情数据当前不可用（可能是数据源故障或非交易时段）。请勿重试，直接告知用户数据无法获取，不要编造股票。",
+            }
+        universe = [s for s in stocks if (s.get("price") or 0) > 0 and s.get("name")]
+        result = universe
         min_chg = args.get("min_change_pct")
         max_chg = args.get("max_change_pct")
         min_amt = args.get("min_amount")
@@ -2868,7 +2919,12 @@ def execute_tool_call(name: str, args: Dict[str, Any], market_context: Optional[
         sort_key = args.get("sort_by", "change_percent")
         result.sort(key=lambda x: x.get(sort_key) or 0, reverse=True)
         limit = min(int(args.get("limit", 30)), 50)
-        return {"total_matched": len(result), "stocks": result[:limit]}
+        return {
+            "total_matched": len(result),
+            "universe_size": len(universe),
+            "data_status": "ok",
+            "stocks": result[:limit],
+        }
 
     if name == "get_stock_data":
         code = str(args.get("code", "")).strip().zfill(6)
@@ -3110,7 +3166,8 @@ def open_chat(payload: ChatPayload, authorization: Optional[str] = Header(None))
         "【重要规则】",
         "  (1) 绝不要求用户手动粘贴或提供行情数据——你有工具可以自己拿",
         "  (2) 若用户要求推荐股票，必须先调用 screen_stocks 筛选，再用 get_stock_data 验证关键标的，然后基于实际数据给出推荐，不能凭空编造",
-        "  (3) 若缺少某日个股数据（如历史日期），如实说明并基于可用数据作答",
+        "  (3) 若 screen_stocks 返回 data_status='unavailable'，立即停止重试，直接告知用户数据源暂时不可用，不要反复调用同一工具",
+        "  (4) 若缺少某日个股数据（如历史日期），如实说明并基于可用数据作答",
         "",
         "每次推荐股票必须包含以下结构（不能省略）：",
         "  股票代码 + 名称",
