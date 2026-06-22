@@ -717,6 +717,26 @@ async function sendMessage(text) {
   currentAbortController = new AbortController();
   const timeoutId = setTimeout(() => currentAbortController.abort(), 150000);
 
+  // Streaming bubble placeholder (created once first token arrives)
+  let streamBubble = null;
+  let streamContent = "";
+  const replyTs = Date.now();
+
+  function getOrCreateBubble() {
+    if (streamBubble) return streamBubble;
+    thinkEl.remove();
+    streamBubble = appendMsg("assistant", "", replyTs);
+    return streamBubble;
+  }
+
+  function updateBubble(text) {
+    streamContent += text;
+    const el = getOrCreateBubble();
+    const bubbleEl = el.querySelector(".msg-bubble");
+    if (bubbleEl) bubbleEl.innerHTML = renderMd(streamContent);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
   try {
     const apiBase = getApiBase();
     const response = await fetch(`${apiBase}/chat`, {
@@ -729,35 +749,74 @@ async function sendMessage(text) {
       }),
       signal: currentAbortController.signal,
     });
-    clearTimeout(timeoutId);
 
-    const data = await response.json();
     if (response.status === 401) {
       thinkEl.remove();
       window.location.href = "auth.html";
       return;
     }
-    const reply = response.ok ? (data.content || "无法获取回复") : (data.detail || "请求失败");
-    thinkEl.remove();
-    const replyTs = Date.now();
-    const assistantMsg = { role: "assistant", content: reply, ts: replyTs };
-    const updated = getHistory();
-    updated.push(assistantMsg);
-    saveHistory(updated);
-    appendMsg("assistant", reply, replyTs);
-    saveMessageToServer(assistantMsg);
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.detail || `HTTP ${response.status}`);
+    }
+
+    // Read SSE stream
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        let evt;
+        try { evt = JSON.parse(line.slice(6)); } catch { continue; }
+        if (evt.type === "token") {
+          updateBubble(evt.text);
+        } else if (evt.type === "done") {
+          clearTimeout(timeoutId);
+          const assistantMsg = { role: "assistant", content: streamContent, ts: replyTs };
+          const updated = getHistory();
+          updated.push(assistantMsg);
+          saveHistory(updated);
+          saveMessageToServer(assistantMsg);
+        } else if (evt.type === "error") {
+          throw new Error(evt.message || "服务器错误");
+        }
+      }
+    }
+
+    // If no token was received at all, remove think bubble
+    if (!streamBubble) thinkEl.remove();
+
   } catch (err) {
     clearTimeout(timeoutId);
-    thinkEl.remove();
-    const isAbort = err.name === "AbortError";
-    const errContent = isAbort
-      ? "请求超时（150秒）或已被取消。请重试，若持续超时可改用更快的模型（如 Haiku/GPT-4o Mini）。"
-      : "网络错误，请检查连接后重试。";
-    const errMsg = { role: "assistant", content: errContent, ts: Date.now() };
-    const updated = getHistory();
-    updated.push(errMsg);
-    saveHistory(updated);
-    appendMsg("assistant", errContent, errMsg.ts);
+    if (streamBubble) {
+      // Already showing partial content — append error note
+      if (!streamContent) {
+        const bubbleEl = streamBubble.querySelector(".msg-bubble");
+        const isAbort = err.name === "AbortError";
+        if (bubbleEl) bubbleEl.textContent = isAbort
+          ? "请求超时（150秒）或已取消。请重试，或换用更快的模型（Haiku / GPT-4o Mini）。"
+          : `请求失败：${err.message}`;
+      }
+    } else {
+      thinkEl.remove();
+      const isAbort = err.name === "AbortError";
+      const errContent = isAbort
+        ? "请求超时（150秒）或已取消。请重试，或换用更快的模型（Haiku / GPT-4o Mini）。"
+        : `网络错误：${err.message}`;
+      const errMsg = { role: "assistant", content: errContent, ts: Date.now() };
+      const updated = getHistory();
+      updated.push(errMsg);
+      saveHistory(updated);
+      appendMsg("assistant", errContent, errMsg.ts);
+    }
   } finally {
     currentAbortController = null;
     setSending(false);

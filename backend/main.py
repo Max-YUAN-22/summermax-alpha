@@ -17,7 +17,7 @@ import pandas as pd
 import requests
 from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from openai import OpenAI
 try:
@@ -3178,114 +3178,108 @@ def open_chat(payload: ChatPayload, authorization: Optional[str] = Header(None))
             except Exception:
                 pass
 
-    def _return(reply: str) -> Dict[str, Any]:
-        _deduct_credit()
-        return {
-            "content": reply,
-            "stocks_fetched": [{"code": s["code"], "name": s["name"]} for s in stock_contexts],
-        }
+    def _sse(obj: Dict[str, Any]) -> str:
+        return f"data: {json.dumps(obj, ensure_ascii=False, default=str)}\n\n"
 
-    try:
-        if use_anthropic:
-            # ── Anthropic (Claude) tool-calling loop ──────────────────────────
-            anthropic_tools = openai_tools_to_anthropic(CHAT_TOOLS)
-            # Extract system prompt and build history without system role
-            ant_system = system_prompt
-            ant_messages: List[Dict[str, Any]] = []
-            for m in messages:
-                if m["role"] == "system":
-                    continue
-                ant_messages.append({"role": m["role"], "content": m["content"]})
-
-            for _round in range(6):
-                resp = client.messages.create(
-                    model=active_model,
-                    system=ant_system,
-                    messages=ant_messages,
-                    tools=anthropic_tools,
-                    max_tokens=2000,
-                )
-                if resp.stop_reason == "tool_use":
-                    tool_use_blocks = [b for b in resp.content if b.type == "tool_use"]
-                    text_blocks = [b for b in resp.content if b.type == "text"]
-                    # Append assistant turn (content is list of blocks as dicts)
-                    ant_messages.append({
-                        "role": "assistant",
-                        "content": [
-                            {"type": "text", "text": b.text} for b in text_blocks
-                        ] + [
-                            {"type": "tool_use", "id": b.id, "name": b.name, "input": b.input}
-                            for b in tool_use_blocks
-                        ],
-                    })
-                    # Execute tools and append results as user turn
-                    tool_results = []
-                    for b in tool_use_blocks:
-                        result = execute_tool_call(b.name, b.input, payload.market_context)
-                        tool_results.append({
-                            "type": "tool_result",
-                            "tool_use_id": b.id,
-                            "content": json.dumps(result, ensure_ascii=False, default=str),
+    def _generate():
+        reply_parts: List[str] = []
+        try:
+            if use_anthropic:
+                # ── Anthropic: non-streaming tool rounds, then streaming final ──
+                anthropic_tools = openai_tools_to_anthropic(CHAT_TOOLS)
+                ant_system = system_prompt
+                ant_msgs: List[Dict[str, Any]] = [
+                    {"role": m["role"], "content": m["content"]}
+                    for m in messages if m["role"] != "system"
+                ]
+                for _round in range(5):
+                    resp = client.messages.create(
+                        model=active_model, system=ant_system,
+                        messages=ant_msgs, tools=anthropic_tools, max_tokens=2000,
+                    )
+                    if resp.stop_reason == "tool_use":
+                        tool_use_blocks = [b for b in resp.content if b.type == "tool_use"]
+                        text_blocks = [b for b in resp.content if b.type == "text"]
+                        ant_msgs.append({
+                            "role": "assistant",
+                            "content": [{"type": "text", "text": b.text} for b in text_blocks]
+                                       + [{"type": "tool_use", "id": b.id, "name": b.name, "input": b.input}
+                                          for b in tool_use_blocks],
                         })
-                    ant_messages.append({"role": "user", "content": tool_results})
-                else:
-                    reply = "".join(b.text for b in resp.content if b.type == "text")
-                    return _return(reply)
-            # Fallback: no tools
-            resp = client.messages.create(
-                model=active_model, system=ant_system,
-                messages=ant_messages, max_tokens=2000,
-            )
-            reply = "".join(b.text for b in resp.content if b.type == "text")
-            return _return(reply)
+                        tool_results = []
+                        for b in tool_use_blocks:
+                            result = execute_tool_call(b.name, b.input, payload.market_context)
+                            tool_results.append({
+                                "type": "tool_result", "tool_use_id": b.id,
+                                "content": json.dumps(result, ensure_ascii=False, default=str),
+                            })
+                        ant_msgs.append({"role": "user", "content": tool_results})
+                    else:
+                        break
+                # Streaming final response (no tools)
+                with client.messages.stream(
+                    model=active_model, system=ant_system,
+                    messages=ant_msgs, max_tokens=2000,
+                ) as stream:
+                    for text in stream.text_stream:
+                        reply_parts.append(text)
+                        yield _sse({"type": "token", "text": text})
 
-        else:
-            # ── OpenAI tool-calling loop ──────────────────────────────────────
-            for _round in range(6):
-                resp = client.chat.completions.create(
-                    model=active_model,
-                    messages=messages,
-                    tools=CHAT_TOOLS,
-                    tool_choice="auto",
-                    max_tokens=2000,
-                    temperature=0.7,
-                )
-                choice = resp.choices[0]
-                if choice.finish_reason == "tool_calls":
-                    tool_calls = choice.message.tool_calls or []
-                    messages.append({
-                        "role": "assistant",
-                        "content": choice.message.content or "",
-                        "tool_calls": [
-                            {
-                                "id": tc.id,
-                                "type": "function",
-                                "function": {"name": tc.function.name, "arguments": tc.function.arguments},
-                            }
-                            for tc in tool_calls
-                        ],
-                    })
-                    for tc in tool_calls:
-                        try:
-                            args = json.loads(tc.function.arguments or "{}")
-                        except json.JSONDecodeError:
-                            args = {}
-                        result = execute_tool_call(tc.function.name, args, payload.market_context)
+            else:
+                # ── OpenAI: non-streaming tool rounds, then streaming final ────
+                for _round in range(5):
+                    resp = client.chat.completions.create(
+                        model=active_model, messages=messages,
+                        tools=CHAT_TOOLS, tool_choice="auto",
+                        max_tokens=2000, temperature=0.7,
+                    )
+                    choice = resp.choices[0]
+                    if choice.finish_reason == "tool_calls":
+                        tool_calls = choice.message.tool_calls or []
                         messages.append({
-                            "role": "tool",
-                            "tool_call_id": tc.id,
-                            "content": json.dumps(result, ensure_ascii=False, default=str),
+                            "role": "assistant",
+                            "content": choice.message.content or "",
+                            "tool_calls": [
+                                {"id": tc.id, "type": "function",
+                                 "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
+                                for tc in tool_calls
+                            ],
                         })
-                else:
-                    reply = choice.message.content or ""
-                    return _return(reply)
-            # Fallback: exceeded max rounds
-            resp = client.chat.completions.create(
-                model=active_model, messages=messages,
-                max_tokens=2000, temperature=0.7,
-            )
-            reply = resp.choices[0].message.content or ""
-            return _return(reply)
+                        for tc in tool_calls:
+                            try:
+                                args = json.loads(tc.function.arguments or "{}")
+                            except json.JSONDecodeError:
+                                args = {}
+                            result = execute_tool_call(tc.function.name, args, payload.market_context)
+                            messages.append({
+                                "role": "tool", "tool_call_id": tc.id,
+                                "content": json.dumps(result, ensure_ascii=False, default=str),
+                            })
+                    else:
+                        break
+                # Streaming final response (no tools)
+                stream = client.chat.completions.create(
+                    model=active_model, messages=messages,
+                    max_tokens=2000, temperature=0.7, stream=True,
+                )
+                for chunk in stream:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        text = chunk.choices[0].delta.content
+                        reply_parts.append(text)
+                        yield _sse({"type": "token", "text": text})
 
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"LLM error: {exc}") from exc
+            reply = "".join(reply_parts)
+            _deduct_credit()
+            yield _sse({
+                "type": "done",
+                "stocks": [{"code": s["code"], "name": s["name"]} for s in stock_contexts],
+            })
+
+        except Exception as exc:
+            yield _sse({"type": "error", "message": str(exc)})
+
+    return StreamingResponse(
+        _generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
