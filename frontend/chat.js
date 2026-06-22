@@ -619,12 +619,14 @@ document.querySelectorAll(".left-tab").forEach((tab) => {
 // ── Chat ──────────────────────────────────────────────────────────────────────
 
 let sending = false;
+let currentAbortController = null;
 
 const messagesEl = document.getElementById("messages");
 const emptyStateEl = document.getElementById("emptyState");
 const chatInputEl = document.getElementById("chatInput");
 const sendBtnEl = document.getElementById("sendBtn");
 const clearBtnEl = document.getElementById("clearBtn");
+const abortBtnEl = document.getElementById("abortBtn");
 
 function getHistory() {
   try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); }
@@ -654,6 +656,21 @@ function buildMsgEl(role, content, ts) {
   return div;
 }
 
+function buildThinkingEl() {
+  const div = document.createElement("div");
+  div.className = "msg assistant thinking";
+  div.innerHTML = `
+    <div class="msg-avatar">Sα</div>
+    <div class="msg-body">
+      <div class="msg-meta"><span>AI 分析师</span></div>
+      <div class="msg-bubble">
+        <span style="color:var(--muted-2);font-style:italic;font-size:0.85rem">正在调用工具分析市场数据</span>
+        <span class="thinking-dots"><span></span><span></span><span></span></span>
+      </div>
+    </div>`;
+  return div;
+}
+
 function appendMsg(role, content, ts) {
   if (emptyStateEl) emptyStateEl.style.display = "none";
   const el = buildMsgEl(role, content, ts);
@@ -671,10 +688,17 @@ function renderMessages() {
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
+function setSending(active) {
+  sending = active;
+  sendBtnEl.disabled = active;
+  if (abortBtnEl) {
+    abortBtnEl.classList.toggle("visible", active);
+  }
+}
+
 async function sendMessage(text) {
   if (sending || !text.trim()) return;
-  sending = true;
-  sendBtnEl.disabled = true;
+  setSending(true);
 
   const ts = Date.now();
   const userMsg = { role: "user", content: text, ts };
@@ -682,10 +706,16 @@ async function sendMessage(text) {
   history.push(userMsg);
   saveHistory(history);
   appendMsg("user", text, ts);
-  saveMessageToServer(userMsg);  // fire and forget
+  saveMessageToServer(userMsg);
 
-  const thinkEl = appendMsg("assistant", "正在分析全市场数据…", null);
-  thinkEl.classList.add("thinking");
+  const thinkEl = buildThinkingEl();
+  if (emptyStateEl) emptyStateEl.style.display = "none";
+  messagesEl.appendChild(thinkEl);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+
+  // 90-second timeout with AbortController
+  currentAbortController = new AbortController();
+  const timeoutId = setTimeout(() => currentAbortController.abort(), 90000);
 
   try {
     const apiBase = getApiBase();
@@ -697,7 +727,10 @@ async function sendMessage(text) {
         history: history.slice(-12).map((h) => ({ role: h.role, content: h.content })),
         market_context: marketCtx || undefined,
       }),
+      signal: currentAbortController.signal,
     });
+    clearTimeout(timeoutId);
+
     const data = await response.json();
     if (response.status === 401) {
       thinkEl.remove();
@@ -712,17 +745,22 @@ async function sendMessage(text) {
     updated.push(assistantMsg);
     saveHistory(updated);
     appendMsg("assistant", reply, replyTs);
-    saveMessageToServer(assistantMsg);  // fire and forget
-  } catch {
+    saveMessageToServer(assistantMsg);
+  } catch (err) {
+    clearTimeout(timeoutId);
     thinkEl.remove();
-    const errMsg = { role: "assistant", content: "网络错误，请检查连接后重试。", ts: Date.now() };
+    const isAbort = err.name === "AbortError";
+    const errContent = isAbort
+      ? "请求超时（90秒）或已被取消。AI 工具调用链较长时可能耗时较久，请重试或简化问题。"
+      : "网络错误，请检查连接后重试。";
+    const errMsg = { role: "assistant", content: errContent, ts: Date.now() };
     const updated = getHistory();
     updated.push(errMsg);
     saveHistory(updated);
-    appendMsg("assistant", errMsg.content, errMsg.ts);
+    appendMsg("assistant", errContent, errMsg.ts);
   } finally {
-    sending = false;
-    sendBtnEl.disabled = false;
+    currentAbortController = null;
+    setSending(false);
     chatInputEl.focus();
   }
 }
@@ -735,6 +773,10 @@ function autoResize() {
 }
 
 chatInputEl.addEventListener("input", autoResize);
+
+abortBtnEl?.addEventListener("click", () => {
+  if (currentAbortController) currentAbortController.abort();
+});
 
 chatInputEl.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {

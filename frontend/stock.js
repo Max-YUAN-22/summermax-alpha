@@ -498,11 +498,17 @@ async function loadChart(period) {
 
   try {
     const res = await fetchWithRetry(`${getApiBase()}/chart/multiperiod?code=${CODE}&period=${period}`);
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`;
+      try { const d = await res.json(); detail = d.detail || detail; } catch {}
+      throw new Error(detail);
+    }
     const data = await res.json();
     chartDataCache[period] = data;
     renderChart(data, period);
   } catch (err) {
-    loadingEl.textContent = `K线加载失败: ${err.message}`;
+    const msg = String(err.message || err).slice(0, 120);
+    loadingEl.textContent = `K线加载失败: ${msg}`;
   }
 }
 

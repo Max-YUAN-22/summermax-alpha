@@ -815,41 +815,65 @@ def fetch_stock_history_cached(code: str) -> tuple[pd.DataFrame, str]:
 
 def fetch_multiperiod_history_from_em(code: str, period: str) -> pd.DataFrame:
     end_date = datetime.now()
-    start_date = end_date - timedelta(days=45 if period == "60" else 12)
-    raw_df = ak.stock_zh_a_hist_min_em(
-        symbol=code,
-        start_date=start_date.strftime("%Y-%m-%d %H:%M:%S"),
-        end_date=end_date.strftime("%Y-%m-%d %H:%M:%S"),
-        period=period,
-        adjust="",
-    )
+    # For 60min use 60 days of history; for 15min use 15 days
+    lookback_days = 60 if period == "60" else 15
+    start_date = end_date - timedelta(days=lookback_days)
+
+    errors: list = []
+
+    # Try different date-format variants (AKShare version differences)
+    for date_fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+        for adj in ("", "qfq"):
+            try:
+                raw_df = ak.stock_zh_a_hist_min_em(
+                    symbol=code,
+                    start_date=start_date.strftime(date_fmt),
+                    end_date=end_date.strftime(date_fmt),
+                    period=period,
+                    adjust=adj,
+                )
+                if raw_df is not None and not raw_df.empty:
+                    break
+                errors.append(f"empty result (fmt={date_fmt}, adj={adj})")
+            except Exception as exc:
+                errors.append(f"exception (fmt={date_fmt}, adj={adj}): {exc}")
+                raw_df = None
+        else:
+            continue
+        break
+    else:
+        raise ValueError(f"All intraday fetch attempts failed: {'; '.join(errors)}")
+
     if raw_df is None or raw_df.empty:
-        raise ValueError("No multi-period history returned from Eastmoney.")
+        raise ValueError(f"No intraday data returned. Attempts: {'; '.join(errors)}")
 
-    renamed = raw_df.rename(
-        columns={
-            "时间": "date",
-            "开盘": "open",
-            "最高": "high",
-            "最低": "low",
-            "收盘": "close",
-            "成交量": "volume",
-            "成交额": "amount",
-            "换手率": "turnover_rate",
-        }
-    )
+    # Normalise column names (AKShare may return Chinese or English headers)
+    col_map = {
+        "时间": "date", "日期时间": "date", "datetime": "date",
+        "开盘": "open", "open": "open",
+        "最高": "high", "high": "high",
+        "最低": "low", "low": "low",
+        "收盘": "close", "close": "close",
+        "成交量": "volume", "volume": "volume",
+        "成交额": "amount", "amount": "amount",
+        "换手率": "turnover_rate", "turnover_rate": "turnover_rate",
+    }
+    renamed = raw_df.rename(columns={c: col_map[c] for c in raw_df.columns if c in col_map})
+
     required = {"date", "open", "high", "low", "close", "volume"}
-    if not required.issubset(renamed.columns):
-        raise ValueError("Unexpected multi-period history format.")
+    missing = required - set(renamed.columns)
+    if missing:
+        raise ValueError(f"Missing columns after rename: {missing}. Got: {list(renamed.columns)}")
 
-    normalized = renamed.loc[:, [column for column in ["date", "open", "high", "low", "close", "volume", "amount", "turnover_rate"] if column in renamed.columns]].copy()
+    keep = [c for c in ["date", "open", "high", "low", "close", "volume", "amount", "turnover_rate"] if c in renamed.columns]
+    normalized = renamed[keep].copy()
     normalized["date"] = pd.to_datetime(normalized["date"])
     for field in ["open", "high", "low", "close", "volume", "amount", "turnover_rate"]:
         if field in normalized.columns:
             normalized[field] = pd.to_numeric(normalized[field], errors="coerce")
     normalized = normalized.dropna(subset=["date", "open", "high", "low", "close", "volume"]).sort_values("date")
     if normalized.empty:
-        raise ValueError("Multi-period history is empty after normalization.")
+        raise ValueError("Intraday data empty after normalization.")
     return normalized.tail(160).reset_index(drop=True)
 
 
@@ -2169,7 +2193,9 @@ def get_multiperiod_chart(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Internal server error: {exc}") from exc
+        import traceback as _tb
+        detail = f"{exc} | {_tb.format_exc()[-400:]}"
+        raise HTTPException(status_code=500, detail=detail) from exc
 
     return {
         "code": code,
