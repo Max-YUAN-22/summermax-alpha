@@ -19,31 +19,43 @@ function getAuthHeaders() {
 const MODELS = [
   {
     id: "claude-sonnet-4-6",
+    provider: "claude",
     name: "Claude Sonnet 4.6",
-    desc: "最新旗舰推理模型，分析深度最强，适合复杂股票解读",
+    desc: "Anthropic 最新旗舰推理模型，分析深度最强，工具调用最稳定",
     badge: "推荐",
     badgeCls: "badge-rec",
   },
   {
     id: "claude-opus-4-7",
+    provider: "claude",
     name: "Claude Opus 4.7",
-    desc: "超强推理能力，速度极快，适合高频查询",
+    desc: "Anthropic 超强推理，适合复杂多步骤分析任务",
     badge: "强力",
     badgeCls: "badge-fast",
   },
   {
     id: "claude-haiku-4-5-20251001",
+    provider: "claude",
     name: "Claude Haiku 4.5",
-    desc: "轻量快速模型，响应最快，消耗积分更少",
+    desc: "Anthropic 轻量快速，响应最快，消耗积分最少",
     badge: "省点",
     badgeCls: "badge-eco",
   },
   {
     id: "gpt-4o",
+    provider: "openai",
     name: "GPT-4o",
-    desc: "OpenAI 旗舰多模态模型，综合能力均衡",
-    badge: "快速",
+    desc: "OpenAI 旗舰多模态模型，综合能力均衡，适合通用分析",
+    badge: "GPT",
     badgeCls: "badge-fast",
+  },
+  {
+    id: "gpt-4o-mini",
+    provider: "openai",
+    name: "GPT-4o Mini",
+    desc: "OpenAI 轻量版，速度快、成本低，日常行情问答首选",
+    badge: "省点",
+    badgeCls: "badge-eco",
   },
 ];
 
@@ -216,16 +228,29 @@ function formatTime(ts) {
 function renderModelGrid() {
   selectedModel = currentUser.llm_model || MODELS[0].id;
   const grid = document.getElementById("modelGrid");
-  grid.innerHTML = MODELS.map((m) => `
-    <div class="model-card ${selectedModel === m.id ? "selected" : ""}" data-id="${m.id}">
-      <input type="radio" name="model" value="${m.id}" ${selectedModel === m.id ? "checked" : ""} />
-      <div class="model-name">
-        ${m.name}
-        <span class="model-badge ${m.badgeCls}">${m.badge}</span>
+
+  const providerLabel = { claude: "🟣 Anthropic · Claude", openai: "🟢 OpenAI · GPT" };
+  const providers = [...new Set(MODELS.map((m) => m.provider))];
+
+  grid.style.gridTemplateColumns = "1fr";
+  grid.innerHTML = providers.map((prov) => {
+    const cards = MODELS.filter((m) => m.provider === prov).map((m) => `
+      <div class="model-card ${selectedModel === m.id ? "selected" : ""}" data-id="${m.id}" style="flex:1;min-width:180px">
+        <input type="radio" name="model" value="${m.id}" ${selectedModel === m.id ? "checked" : ""} />
+        <div class="model-name">
+          ${m.name}
+          <span class="model-badge ${m.badgeCls}">${m.badge}</span>
+        </div>
+        <div class="model-desc">${m.desc}</div>
       </div>
-      <div class="model-desc">${m.desc}</div>
-    </div>
-  `).join("");
+    `).join("");
+    return `
+      <div style="margin-bottom:14px">
+        <div style="font-size:0.72rem;font-weight:700;color:var(--muted-2);letter-spacing:0.05em;margin-bottom:8px">${providerLabel[prov] || prov}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">${cards}</div>
+      </div>
+    `;
+  }).join("");
 
   grid.querySelectorAll(".model-card").forEach((card) => {
     card.addEventListener("click", () => {

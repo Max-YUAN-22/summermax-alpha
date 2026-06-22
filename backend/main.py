@@ -19,6 +19,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from openai import OpenAI
+try:
+    import anthropic as _anthropic
+    _ANTHROPIC_AVAILABLE = True
+except ImportError:
+    _ANTHROPIC_AVAILABLE = False
 from pydantic import BaseModel
 
 
@@ -685,6 +690,35 @@ def get_openai_client() -> Optional[OpenAI]:
     if base_url:
         return OpenAI(api_key=api_key, base_url=base_url)
     return OpenAI(api_key=api_key)
+
+
+def get_anthropic_client() -> Optional[Any]:
+    if not _ANTHROPIC_AVAILABLE:
+        return None
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        return None
+    base_url = os.getenv("ANTHROPIC_BASE_URL")
+    if base_url:
+        return _anthropic.Anthropic(api_key=api_key, base_url=base_url)
+    return _anthropic.Anthropic(api_key=api_key)
+
+
+def is_claude_model(model: str) -> bool:
+    return model.startswith("claude")
+
+
+def openai_tools_to_anthropic(tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Convert OpenAI function-calling tool spec to Anthropic tool spec."""
+    result = []
+    for t in tools:
+        fn = t.get("function", {})
+        result.append({
+            "name": fn["name"],
+            "description": fn.get("description", ""),
+            "input_schema": fn.get("parameters", {"type": "object", "properties": {}, "required": []}),
+        })
+    return result
 
 
 def normalize_history_dataframe(df: pd.DataFrame) -> pd.DataFrame:
@@ -2980,9 +3014,16 @@ def open_chat(payload: ChatPayload, authorization: Optional[str] = Header(None))
     if not message:
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
 
-    client = get_openai_client()
-    if not client:
-        raise HTTPException(status_code=503, detail="LLM not configured on this server.")
+    # Route to the right provider based on model prefix
+    use_anthropic = is_claude_model(active_model)
+    if use_anthropic:
+        client = get_anthropic_client()
+        if not client:
+            raise HTTPException(status_code=503, detail="Claude API 未配置（请在 Render 环境变量中设置 ANTHROPIC_API_KEY）")
+    else:
+        client = get_openai_client()
+        if not client:
+            raise HTTPException(status_code=503, detail="OpenAI API 未配置（请设置 OPENAI_API_KEY）")
 
     # Extract stock mentions and fetch real-time data for each
     stock_contexts: List[Dict[str, Any]] = []
@@ -3124,72 +3165,128 @@ def open_chat(payload: ChatPayload, authorization: Optional[str] = Header(None))
             messages.append({"role": h["role"], "content": h["content"]})
     messages.append({"role": "user", "content": message})
 
-    try:
-        for _round in range(6):
-            resp = client.chat.completions.create(
-                model=active_model,
-                messages=messages,
-                tools=CHAT_TOOLS,
-                tool_choice="auto",
-                max_tokens=2000,
-                temperature=0.7,
-            )
-            choice = resp.choices[0]
-            if choice.finish_reason == "tool_calls":
-                tool_calls = choice.message.tool_calls or []
-                messages.append({
-                    "role": "assistant",
-                    "content": choice.message.content or "",
-                    "tool_calls": [
-                        {
-                            "id": tc.id,
-                            "type": "function",
-                            "function": {"name": tc.function.name, "arguments": tc.function.arguments},
-                        }
-                        for tc in tool_calls
-                    ],
-                })
-                for tc in tool_calls:
-                    try:
-                        args = json.loads(tc.function.arguments or "{}")
-                    except json.JSONDecodeError:
-                        args = {}
-                    result = execute_tool_call(tc.function.name, args, payload.market_context)
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tc.id,
-                        "content": json.dumps(result, ensure_ascii=False, default=str),
-                    })
-            else:
-                reply = choice.message.content or ""
-                # Deduct 1 credit and log usage
-                if user_email and user_role != "admin":
-                    try:
-                        conn = get_db()
-                        conn.execute("UPDATE users SET balance = MAX(0, balance - 1) WHERE email = ?", (user_email,))
-                        conn.execute(
-                            "INSERT INTO usage_log (email, action, cost, model) VALUES (?, 'chat', 1, ?)",
-                            (user_email, active_model),
-                        )
-                        conn.commit()
-                        conn.close()
-                    except Exception:
-                        pass
-                return {
-                    "content": reply,
-                    "stocks_fetched": [{"code": s["code"], "name": s["name"]} for s in stock_contexts],
-                }
-        # Fallback: exceeded max rounds, get final answer without tools
-        resp = client.chat.completions.create(
-            model=active_model,
-            messages=messages,
-            max_tokens=2000,
-            temperature=0.7,
-        )
-        reply = resp.choices[0].message.content or ""
+    def _deduct_credit() -> None:
+        if user_email and user_role != "admin":
+            try:
+                conn = get_db()
+                conn.execute("UPDATE users SET balance = MAX(0, balance - 1) WHERE email = ?", (user_email,))
+                conn.execute(
+                    "INSERT INTO usage_log (email, action, cost, model) VALUES (?, 'chat', 1, ?)",
+                    (user_email, active_model),
+                )
+                conn.commit()
+                conn.close()
+            except Exception:
+                pass
+
+    def _return(reply: str) -> Dict[str, Any]:
+        _deduct_credit()
         return {
             "content": reply,
             "stocks_fetched": [{"code": s["code"], "name": s["name"]} for s in stock_contexts],
         }
+
+    try:
+        if use_anthropic:
+            # ── Anthropic (Claude) tool-calling loop ──────────────────────────
+            anthropic_tools = openai_tools_to_anthropic(CHAT_TOOLS)
+            # Extract system prompt and build history without system role
+            ant_system = system_prompt
+            ant_messages: List[Dict[str, Any]] = []
+            for m in messages:
+                if m["role"] == "system":
+                    continue
+                ant_messages.append({"role": m["role"], "content": m["content"]})
+
+            for _round in range(6):
+                resp = client.messages.create(
+                    model=active_model,
+                    system=ant_system,
+                    messages=ant_messages,
+                    tools=anthropic_tools,
+                    max_tokens=2000,
+                )
+                if resp.stop_reason == "tool_use":
+                    tool_use_blocks = [b for b in resp.content if b.type == "tool_use"]
+                    text_blocks = [b for b in resp.content if b.type == "text"]
+                    # Append assistant turn (content is list of blocks as dicts)
+                    ant_messages.append({
+                        "role": "assistant",
+                        "content": [
+                            {"type": "text", "text": b.text} for b in text_blocks
+                        ] + [
+                            {"type": "tool_use", "id": b.id, "name": b.name, "input": b.input}
+                            for b in tool_use_blocks
+                        ],
+                    })
+                    # Execute tools and append results as user turn
+                    tool_results = []
+                    for b in tool_use_blocks:
+                        result = execute_tool_call(b.name, b.input, payload.market_context)
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": b.id,
+                            "content": json.dumps(result, ensure_ascii=False, default=str),
+                        })
+                    ant_messages.append({"role": "user", "content": tool_results})
+                else:
+                    reply = "".join(b.text for b in resp.content if b.type == "text")
+                    return _return(reply)
+            # Fallback: no tools
+            resp = client.messages.create(
+                model=active_model, system=ant_system,
+                messages=ant_messages, max_tokens=2000,
+            )
+            reply = "".join(b.text for b in resp.content if b.type == "text")
+            return _return(reply)
+
+        else:
+            # ── OpenAI tool-calling loop ──────────────────────────────────────
+            for _round in range(6):
+                resp = client.chat.completions.create(
+                    model=active_model,
+                    messages=messages,
+                    tools=CHAT_TOOLS,
+                    tool_choice="auto",
+                    max_tokens=2000,
+                    temperature=0.7,
+                )
+                choice = resp.choices[0]
+                if choice.finish_reason == "tool_calls":
+                    tool_calls = choice.message.tool_calls or []
+                    messages.append({
+                        "role": "assistant",
+                        "content": choice.message.content or "",
+                        "tool_calls": [
+                            {
+                                "id": tc.id,
+                                "type": "function",
+                                "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                            }
+                            for tc in tool_calls
+                        ],
+                    })
+                    for tc in tool_calls:
+                        try:
+                            args = json.loads(tc.function.arguments or "{}")
+                        except json.JSONDecodeError:
+                            args = {}
+                        result = execute_tool_call(tc.function.name, args, payload.market_context)
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tc.id,
+                            "content": json.dumps(result, ensure_ascii=False, default=str),
+                        })
+                else:
+                    reply = choice.message.content or ""
+                    return _return(reply)
+            # Fallback: exceeded max rounds
+            resp = client.chat.completions.create(
+                model=active_model, messages=messages,
+                max_tokens=2000, temperature=0.7,
+            )
+            reply = resp.choices[0].message.content or ""
+            return _return(reply)
+
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"LLM error: {exc}") from exc
