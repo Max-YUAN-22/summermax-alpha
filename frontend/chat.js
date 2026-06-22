@@ -778,6 +778,10 @@ async function sendMessage(text) {
         try { evt = JSON.parse(line.slice(6)); } catch { continue; }
         if (evt.type === "token") {
           updateBubble(evt.text);
+        } else if (evt.type === "status") {
+          // Update thinking bubble text to show what tool is running
+          const statusEl = thinkEl.querySelector("span[style]");
+          if (statusEl && !streamBubble) statusEl.textContent = evt.msg;
         } else if (evt.type === "done") {
           clearTimeout(timeoutId);
           const assistantMsg = { role: "assistant", content: streamContent, ts: replyTs };

@@ -2980,8 +2980,17 @@ class ChatPayload(BaseModel):
     market_context: Optional[Dict[str, Any]] = None
 
 
+_TOOL_STATUS: Dict[str, str] = {
+    "screen_stocks": "正在筛选全市场股票…",
+    "get_stock_data": "正在获取个股技术指标…",
+    "get_sector_overview": "正在拉取行业板块排名…",
+    "get_sector_stocks": "正在获取板块内个股行情…",
+    "get_capital_flow": "正在获取主力资金流向…",
+}
+
+
 @app.post("/chat")
-def open_chat(payload: ChatPayload, authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+def open_chat(payload: ChatPayload, authorization: Optional[str] = Header(None)):
     claims = _get_token_from_header(authorization)
 
     # If REQUIRE_AUTH is enabled, validate JWT
@@ -3193,6 +3202,7 @@ def open_chat(payload: ChatPayload, authorization: Optional[str] = Header(None))
                     for m in messages if m["role"] != "system"
                 ]
                 for _round in range(5):
+                    yield _sse({"type": "status", "msg": "AI 正在思考…"})
                     resp = client.messages.create(
                         model=active_model, system=ant_system,
                         messages=ant_msgs, tools=anthropic_tools, max_tokens=2000,
@@ -3208,6 +3218,7 @@ def open_chat(payload: ChatPayload, authorization: Optional[str] = Header(None))
                         })
                         tool_results = []
                         for b in tool_use_blocks:
+                            yield _sse({"type": "status", "msg": _TOOL_STATUS.get(b.name, f"正在调用 {b.name}…")})
                             result = execute_tool_call(b.name, b.input, payload.market_context)
                             tool_results.append({
                                 "type": "tool_result", "tool_use_id": b.id,
@@ -3228,6 +3239,7 @@ def open_chat(payload: ChatPayload, authorization: Optional[str] = Header(None))
             else:
                 # ── OpenAI: non-streaming tool rounds, then streaming final ────
                 for _round in range(5):
+                    yield _sse({"type": "status", "msg": "AI 正在思考…"})
                     resp = client.chat.completions.create(
                         model=active_model, messages=messages,
                         tools=CHAT_TOOLS, tool_choice="auto",
@@ -3250,6 +3262,7 @@ def open_chat(payload: ChatPayload, authorization: Optional[str] = Header(None))
                                 args = json.loads(tc.function.arguments or "{}")
                             except json.JSONDecodeError:
                                 args = {}
+                            yield _sse({"type": "status", "msg": _TOOL_STATUS.get(tc.function.name, f"正在调用 {tc.function.name}…")})
                             result = execute_tool_call(tc.function.name, args, payload.market_context)
                             messages.append({
                                 "role": "tool", "tool_call_id": tc.id,
