@@ -5,6 +5,7 @@ import re
 import secrets
 import smtplib
 import sqlite3
+import threading
 from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -2680,55 +2681,53 @@ def extract_stock_mentions(message: str, universe: pd.DataFrame) -> List[Dict[st
 # ── Full market snapshot cache (powers screen_stocks tool) ────────────────────
 
 FULL_MARKET_CACHE: Dict[str, Any] = {"data": None, "loaded_at": None}
-FULL_MARKET_TTL = timedelta(minutes=5)
-_ALL_STOCK_FS = "m:0+t:6+f:!50,m:0+t:13+f:!50,m:0+t:80+f:!50,m:1+t:2+f:!50,m:1+t:23+f:!50"
+FULL_MARKET_TTL = timedelta(minutes=15)
+_CACHE_LOCK = threading.Lock()
 
 
 def get_full_market_snapshot() -> List[Dict[str, Any]]:
-    entry = FULL_MARKET_CACHE
-    if entry["data"] and entry["loaded_at"] and datetime.now() - entry["loaded_at"] < FULL_MARKET_TTL:
-        return entry["data"]
-    seen: set = set()
-    stocks: List[Dict[str, Any]] = []
-    for page in range(1, 10):
+    with _CACHE_LOCK:
+        entry = FULL_MARKET_CACHE
+        if entry["data"] and entry["loaded_at"] and datetime.now() - entry["loaded_at"] < FULL_MARKET_TTL:
+            return entry["data"]
         try:
-            resp = requests.get(
-                "https://82.push2.eastmoney.com/api/qt/clist/get",
-                params={
-                    "pn": page, "pz": "500", "po": "1", "np": "1",
-                    "ut": "bd1d9ddb04089700cf9c27f6f7426281",
-                    "fltt": "2", "invt": "2", "fid": "f3",
-                    "fs": _ALL_STOCK_FS,
-                    "fields": "f2,f3,f6,f8,f10,f11,f12,f14",
-                },
-                headers={**DEFAULT_HEADERS, "Referer": "https://quote.eastmoney.com/center/boardlist.html"},
-                timeout=12,
-            )
-            resp.raise_for_status()
-            diffs = (resp.json().get("data") or {}).get("diff") or []
-            if not diffs:
-                break
-            for item in diffs:
-                code = str(item.get("f12") or "").zfill(6)
-                if not code or code == "000000" or code in seen:
-                    continue
-                seen.add(code)
-                stocks.append({
-                    "code": code,
-                    "name": str(item.get("f14") or ""),
-                    "price": safe_float(item.get("f2")) or 0,
-                    "change_percent": safe_float(item.get("f3")) or 0,
-                    "amount": safe_float(item.get("f6")) or 0,
-                    "turnover_rate": safe_float(item.get("f8")) or 0,
-                    "vol_ratio": safe_float(item.get("f10")) or 0,
-                    "rise_speed": safe_float(item.get("f11")) or 0,
-                })
+            df = ak.stock_zh_a_spot_em()
         except Exception:
-            break
-    if stocks:
-        FULL_MARKET_CACHE["data"] = stocks
-        FULL_MARKET_CACHE["loaded_at"] = datetime.now()
-    return stocks
+            return entry["data"] or []
+        if df is None or df.empty:
+            return entry["data"] or []
+        stocks: List[Dict[str, Any]] = []
+        for _, row in df.iterrows():
+            code = str(row.get("代码") or "").zfill(6)
+            if not code or code == "000000":
+                continue
+            price = safe_float(row.get("最新价")) or 0
+            if price <= 0:
+                continue
+            stocks.append({
+                "code": code,
+                "name": str(row.get("名称") or ""),
+                "price": price,
+                "change_percent": safe_float(row.get("涨跌幅")) or 0,
+                "amount": safe_float(row.get("成交额")) or 0,
+                "turnover_rate": safe_float(row.get("换手率")) or 0,
+                "vol_ratio": safe_float(row.get("量比")) or 0,
+                "rise_speed": safe_float(row.get("涨速")) or 0,
+            })
+        if stocks:
+            FULL_MARKET_CACHE["data"] = stocks
+            FULL_MARKET_CACHE["loaded_at"] = datetime.now()
+        return stocks
+
+
+def _prewarm_market_cache() -> None:
+    try:
+        get_full_market_snapshot()
+    except Exception:
+        pass
+
+
+threading.Thread(target=_prewarm_market_cache, daemon=True).start()
 
 
 # ── Chat tool definitions ─────────────────────────────────────────────────────

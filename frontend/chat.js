@@ -713,9 +713,9 @@ async function sendMessage(text) {
   messagesEl.appendChild(thinkEl);
   messagesEl.scrollTop = messagesEl.scrollHeight;
 
-  // 90-second timeout with AbortController
+  // 150-second timeout with AbortController
   currentAbortController = new AbortController();
-  const timeoutId = setTimeout(() => currentAbortController.abort(), 90000);
+  const timeoutId = setTimeout(() => currentAbortController.abort(), 150000);
 
   try {
     const apiBase = getApiBase();
@@ -751,7 +751,7 @@ async function sendMessage(text) {
     thinkEl.remove();
     const isAbort = err.name === "AbortError";
     const errContent = isAbort
-      ? "请求超时（90秒）或已被取消。AI 工具调用链较长时可能耗时较久，请重试或简化问题。"
+      ? "请求超时（150秒）或已被取消。请重试，若持续超时可改用更快的模型（如 Haiku/GPT-4o Mini）。"
       : "网络错误，请检查连接后重试。";
     const errMsg = { role: "assistant", content: errContent, ts: Date.now() };
     const updated = getHistory();
