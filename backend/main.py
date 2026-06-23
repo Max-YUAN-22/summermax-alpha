@@ -475,7 +475,7 @@ def update_user_settings(payload: UserSettingsRequest, authorization: Optional[s
     if not claims:
         raise HTTPException(status_code=401, detail="请先登录")
     email = claims["sub"]
-    allowed_models = {"", "gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "gpt-4-turbo", "gpt-3.5-turbo"}
+    allowed_models = {"", "claude-sonnet-4-6", "gpt-5.5"}
     model = (payload.llm_model or "").strip()
     if model not in allowed_models:
         raise HTTPException(status_code=400, detail=f"不支持的模型: {model}")
@@ -1408,6 +1408,55 @@ def fetch_stock_fund_flow(code: str) -> Dict[str, Any]:
         "series": [],
         "latest": {},
     }
+
+
+FUNDAMENTALS_CACHE: Dict[str, Any] = {}
+FUNDAMENTALS_CACHE_TTL = timedelta(hours=4)
+
+
+def fetch_stock_fundamentals(code: str) -> Dict[str, Any]:
+    """Fetch key financial ratios for a stock via AKShare (quarterly data, cached 4h)."""
+    entry = FUNDAMENTALS_CACHE.get(code)
+    if entry and datetime.now() - entry["loaded_at"] < FUNDAMENTALS_CACHE_TTL:
+        return entry["data"]
+
+    def _safe_ratio(val: Any) -> Optional[float]:
+        if val is None:
+            return None
+        try:
+            if pd.isna(val):
+                return None
+        except Exception:
+            pass
+        try:
+            s = str(val).replace("%", "").strip()
+            return round(float(s), 2)
+        except (ValueError, TypeError):
+            return None
+
+    try:
+        df = ak.stock_financial_analysis_indicator(symbol=code)
+        if df is None or df.empty:
+            return {"error": "暂无财务数据", "code": code}
+        latest = df.iloc[-1]
+        result: Dict[str, Any] = {
+            "code": code,
+            "report_date": str(latest.get("报告期", "")),
+            "eps": _safe_ratio(latest.get("每股收益")),
+            "roe": _safe_ratio(latest.get("净资产收益率")),
+            "gross_margin": _safe_ratio(latest.get("销售毛利率")),
+            "debt_ratio": _safe_ratio(latest.get("资产负债率")),
+            "current_ratio": _safe_ratio(latest.get("流动比率")),
+            "quick_ratio": _safe_ratio(latest.get("速动比率")),
+            "revenue_growth": _safe_ratio(latest.get("营业收入同比增长率")),
+            "profit_growth": _safe_ratio(latest.get("净利润同比增长率")),
+            "pe": _safe_ratio(latest.get("市盈率-动态")),
+            "pb": _safe_ratio(latest.get("市净率")),
+        }
+        FUNDAMENTALS_CACHE[code] = {"data": result, "loaded_at": datetime.now()}
+        return result
+    except Exception as exc:
+        return {"error": str(exc), "code": code}
 
 
 def generate_assistant_reply(code: str, question: str) -> Dict[str, Any]:
@@ -2720,6 +2769,8 @@ def _fetch_market_data() -> List[Dict[str, Any]]:
                 vol_ratio = safe_float(row.get("量比")) or 0
                 turnover = safe_float(row.get("换手率")) or 0
                 amount = safe_float(row.get("成交额")) or 0
+                pe_ratio = safe_float(row.get("市盈率-动态"))
+                pb_ratio = safe_float(row.get("市净率"))
                 # Qlib-style composite quality score:
                 # reward moderate gain + high vol_ratio + healthy turnover
                 # penalise near-limit stocks (>9%) and very low volume
@@ -2740,6 +2791,8 @@ def _fetch_market_data() -> List[Dict[str, Any]]:
                     "amount": amount,
                     "turnover_rate": turnover,
                     "vol_ratio": vol_ratio,
+                    "pe_ratio": pe_ratio,
+                    "pb_ratio": pb_ratio,
                     "rise_speed": safe_float(row.get("涨速")) or 0,
                     "quality_score": round(quality, 2),
                 })
@@ -2859,6 +2912,9 @@ CHAT_TOOLS: List[Dict[str, Any]] = [
                     "min_turnover_pct": {"type": "number", "description": "最小换手率(%)"},
                     "max_turnover_pct": {"type": "number", "description": "最大换手率(%)"},
                     "min_vol_ratio": {"type": "number", "description": "最小量比"},
+                    "min_pe": {"type": "number", "description": "最小市盈率（动态PE），如 5"},
+                    "max_pe": {"type": "number", "description": "最大市盈率（动态PE），如 30，过滤高估值"},
+                    "max_pb": {"type": "number", "description": "最大市净率，如 3"},
                     "sort_by": {
                         "type": "string",
                         "enum": ["quality_score", "change_percent", "amount", "turnover_rate", "vol_ratio"],
@@ -2926,6 +2982,23 @@ CHAT_TOOLS: List[Dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_fundamentals",
+            "description": (
+                "获取某只A股的核心财务指标：ROE、毛利率、资产负债率、EPS、营收/净利润增速、PE、PB。"
+                "用于在技术指标之外验证基本面质量，避免推荐财务恶化的股票。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "code": {"type": "string", "description": "6位A股代码，如 '600519'"},
+                },
+                "required": ["code"],
+            },
+        },
+    },
 ]
 
 
@@ -2963,6 +3036,15 @@ def execute_tool_call(name: str, args: Dict[str, Any], market_context: Optional[
             result = [s for s in result if (s.get("turnover_rate") or 0) <= max_turn]
         if min_volr is not None:
             result = [s for s in result if (s.get("vol_ratio") or 0) >= min_volr]
+        min_pe = args.get("min_pe")
+        max_pe = args.get("max_pe")
+        max_pb = args.get("max_pb")
+        if min_pe is not None:
+            result = [s for s in result if s.get("pe_ratio") is not None and s["pe_ratio"] >= min_pe]
+        if max_pe is not None:
+            result = [s for s in result if s.get("pe_ratio") is not None and 0 < s["pe_ratio"] <= max_pe]
+        if max_pb is not None:
+            result = [s for s in result if s.get("pb_ratio") is not None and 0 < s["pb_ratio"] <= max_pb]
         sort_key = args.get("sort_by", "quality_score")
         result.sort(key=lambda x: x.get(sort_key) or 0, reverse=True)
         limit = min(int(args.get("limit", 30)), 50)
@@ -3014,6 +3096,10 @@ def execute_tool_call(name: str, args: Dict[str, Any], market_context: Optional[
             return fetch_stock_fund_flow(code)
         except Exception as exc:
             return {"error": str(exc), "code": code}
+
+    if name == "get_fundamentals":
+        code = str(args.get("code", "")).strip().zfill(6)
+        return fetch_stock_fundamentals(code)
 
     return {"error": f"Unknown tool: {name}"}
 
@@ -3107,6 +3193,7 @@ _TOOL_STATUS: Dict[str, str] = {
     "get_sector_overview": "正在拉取行业板块排名…",
     "get_sector_stocks": "正在获取板块内个股行情…",
     "get_capital_flow": "正在获取主力资金流向…",
+    "get_fundamentals": "正在获取财务基本面数据…",
 }
 
 
@@ -3210,6 +3297,7 @@ def open_chat(payload: ChatPayload, authorization: Optional[str] = Header(None))
         "  • get_sector_overview —— 获取全部行业板块今日涨跌排名、资金流向、领涨股",
         "  • get_sector_stocks —— 获取某板块内所有个股今日行情",
         "  • get_capital_flow —— 获取某股票近10日主力资金净流入趋势",
+        "  • get_fundamentals —— 获取某股票的财务基本面：ROE/PE/PB/毛利率/资产负债率/净利润增速（验证基本面质量必用）",
         "【选股因子规则（参考Qlib/Backtrader量化框架）】",
         "  尾盘/隔夜选股必须同时满足：",
         "  ① 涨幅 +2%~+7%（避开涨停板/跌停板，避免追高）",
@@ -3217,6 +3305,7 @@ def open_chat(payload: ChatPayload, authorization: Optional[str] = Header(None))
         "  ③ 换手率 3%~15%（流动性合理，避开过冷/过热）",
         "  ④ 成交额 ≥ 1亿（流动性门槛）",
         "  ⑤ sort_by=quality_score 排序，取前20名后再用 get_stock_data 验证RSI<75（未超买）",
+        "  ⑥ 高质量选股可用 get_fundamentals 验证：ROE>10%、净利润增速>0%、资产负债率<70%",
         "  严禁推荐：涨幅>9%的涨停股、ST股、今日首日上市股、量比<0.5的缩量股",
         "【重要规则】",
         "  (1) 绝不要求用户手动粘贴或提供行情数据——你有工具可以自己拿",
