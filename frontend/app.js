@@ -443,6 +443,35 @@ function formatCompactNumber(value) {
   }).format(num);
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function renderEmptyAiState(message) {
+  llmOutputEl.innerHTML = `<div class="ai-empty-state">${escapeHtml(message)}</div>`;
+}
+
+function renderAiPanel(label, body, extraClass = "") {
+  return `
+    <section class="ai-panel ${extraClass}">
+      <span class="ai-panel-label">${escapeHtml(label)}</span>
+      ${body}
+    </section>
+  `;
+}
+
+function renderAiList(items = []) {
+  if (!items.length) {
+    return `<div class="ai-panel-value muted">-</div>`;
+  }
+  return `<ul class="ai-list">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
+}
+
 function createMetric(label, value) {
   return `
     <div class="metric">
@@ -633,7 +662,7 @@ function renderRuleAnalysis(analysis = {}) {
       signals.push(`${model.name}: ${model.bias} (score ${model.score})`);
     });
   }
-  signalsOutputEl.innerHTML = signals.map((signal) => `<li>${signal}</li>`).join("");
+  signalsOutputEl.innerHTML = signals.map((signal) => `<li>${escapeHtml(signal)}</li>`).join("");
 }
 
 function decorateDecisionTag(direction, actionBias, scorecard) {
@@ -738,47 +767,99 @@ function renderBriefing(stockData = {}) {
 
 function renderLlmAnalysis(llmAnalysis) {
   if (!useLlmInput.checked) {
-    llmOutputEl.textContent = t("gptDisabled");
+    renderEmptyAiState(t("gptDisabled"));
     return;
   }
 
   if (!llmAnalysis) {
-    llmOutputEl.textContent = t("noAnalysis");
+    renderEmptyAiState(currentLang === "zh"
+      ? "分析后，AI 会把方向、时间框架、关键位、风险和动作建议拆成卡片展示在这里。"
+      : "After analysis, AI direction, timeframe, key levels, risks, and action bias will appear here as structured cards.");
     return;
   }
 
   if (llmAnalysis.status === "ok" && llmAnalysis.content) {
     const content = llmAnalysis.content;
-    const support = Array.isArray(content.key_levels?.support) ? content.key_levels.support.join(", ") : "-";
-    const resistance = Array.isArray(content.key_levels?.resistance) ? content.key_levels.resistance.join(", ") : "-";
-    const catalysts = Array.isArray(content.catalysts) ? content.catalysts.join("; ") : "-";
-    const risks = Array.isArray(content.risks) ? content.risks.join("; ") : "-";
     const scorecard = content.scorecard || {};
+    const support = Array.isArray(content.key_levels?.support) ? content.key_levels.support.map((value) => formatNumber(value)) : [];
+    const resistance = Array.isArray(content.key_levels?.resistance) ? content.key_levels.resistance.map((value) => formatNumber(value)) : [];
+    const scoreLines = [
+      `trend ${scorecard.trend ?? "-"}`,
+      `momentum ${scorecard.momentum ?? "-"}`,
+      `flow ${scorecard.flow ?? "-"}`,
+      `risk ${scorecard.risk ?? "-"}`,
+      `overall ${scorecard.overall ?? "-"}`,
+    ];
 
-    llmOutputEl.textContent = [
-      `${t("direction")}: ${content.direction || "-"}`,
-      `${t("confidence")}: ${content.confidence ?? "-"}/100`,
-      `${t("timeframe")}: ${content.timeframe || "-"}`,
-      `${t("modelScorecard")}: trend ${scorecard.trend ?? "-"} | momentum ${scorecard.momentum ?? "-"} | flow ${scorecard.flow ?? "-"} | risk ${scorecard.risk ?? "-"} | overall ${scorecard.overall ?? "-"}`,
-      `${t("actionBias")}: ${content.action_bias || "-"}`,
-      `${t("thesis")}: ${content.thesis || "-"}`,
-      `${t("bullCase")}: ${content.bull_case || "-"}`,
-      `${t("bearCase")}: ${content.bear_case || "-"}`,
-      `${t("support")}: ${support}`,
-      `${t("resistance")}: ${resistance}`,
-      `${t("catalysts")}: ${catalysts}`,
-      `${t("risks")}: ${risks}`,
-      `${t("referee")}: ${content.referee || "-"}`,
-    ].join("\n");
+    llmOutputEl.innerHTML = [
+      renderAiPanel(
+        currentLang === "zh" ? "AI 总结" : "AI Summary",
+        `
+          <div class="ai-kpi-grid">
+            <div class="ai-kpi">
+              <span class="ai-kpi-label">${escapeHtml(t("direction"))}</span>
+              <span class="ai-kpi-value">${escapeHtml(content.direction || "-")}</span>
+            </div>
+            <div class="ai-kpi">
+              <span class="ai-kpi-label">${escapeHtml(t("confidence"))}</span>
+              <span class="ai-kpi-value">${escapeHtml(content.confidence != null ? `${content.confidence}/100` : "-")}</span>
+            </div>
+            <div class="ai-kpi">
+              <span class="ai-kpi-label">${escapeHtml(t("timeframe"))}</span>
+              <span class="ai-kpi-value">${escapeHtml(content.timeframe || "-")}</span>
+            </div>
+            <div class="ai-kpi">
+              <span class="ai-kpi-label">${escapeHtml(t("actionBias"))}</span>
+              <span class="ai-kpi-value">${escapeHtml(content.action_bias || "-")}</span>
+            </div>
+          </div>
+          <div class="ai-panel-value">${escapeHtml(content.thesis || "-")}</div>
+        `,
+        "hero"
+      ),
+      renderAiPanel(
+        currentLang === "zh" ? "关键位与打分" : "Levels & Scorecard",
+        `
+          <ul class="ai-list">
+            <li><strong>${escapeHtml(t("support"))}:</strong> ${escapeHtml(support.join(" / ") || "-")}</li>
+            <li><strong>${escapeHtml(t("resistance"))}:</strong> ${escapeHtml(resistance.join(" / ") || "-")}</li>
+            <li><strong>${escapeHtml(t("modelScorecard"))}:</strong> ${escapeHtml(scoreLines.join(" | "))}</li>
+          </ul>
+        `
+      ),
+      renderAiPanel(
+        currentLang === "zh" ? "多空逻辑" : "Bull vs Bear",
+        `
+          <ul class="ai-list">
+            <li><strong>${escapeHtml(t("bullCase"))}:</strong> ${escapeHtml(content.bull_case || "-")}</li>
+            <li><strong>${escapeHtml(t("bearCase"))}:</strong> ${escapeHtml(content.bear_case || "-")}</li>
+            <li><strong>${escapeHtml(t("referee"))}:</strong> ${escapeHtml(content.referee || "-")}</li>
+          </ul>
+        `
+      ),
+      renderAiPanel(
+        currentLang === "zh" ? "催化与风险" : "Catalysts & Risks",
+        `
+          <div style="margin-bottom:10px">
+            <span class="ai-panel-label" style="margin-bottom:6px">${escapeHtml(t("catalysts"))}</span>
+            ${renderAiList(Array.isArray(content.catalysts) ? content.catalysts : [])}
+          </div>
+          <div>
+            <span class="ai-panel-label" style="margin-bottom:6px">${escapeHtml(t("risks"))}</span>
+            ${renderAiList(Array.isArray(content.risks) ? content.risks : [])}
+          </div>
+        `
+      ),
+    ].join("");
     return;
   }
 
   if (llmAnalysis.content?.detail) {
-    llmOutputEl.textContent = llmAnalysis.content.detail;
+    renderEmptyAiState(llmAnalysis.content.detail);
     return;
   }
 
-  llmOutputEl.textContent = t("unknownError");
+  renderEmptyAiState(t("unknownError"));
 }
 
 function renderCloseSignal(closeSignal = {}, riskAssessment = {}, finalDecision = {}, scorecard = {}, intraday = {}) {
@@ -823,7 +904,7 @@ function renderFundFlow(payload = {}) {
     signals.push(payload.detail);
   }
 
-  fundFlowSignalsEl.innerHTML = signals.map((signal) => `<li>${signal}</li>`).join("");
+  fundFlowSignalsEl.innerHTML = signals.map((signal) => `<li>${escapeHtml(signal)}</li>`).join("");
 }
 
 function setActivePeriod(period) {
@@ -925,14 +1006,14 @@ function renderAssistantLog(items) {
   }
 
   if (!items.length) {
-    assistantLogEl.innerHTML = `<div class="assistant-msg"><span class="assistant-role">${t("assistantModel")}</span><p class="assistant-content">${t("assistantEmpty")}</p></div>`;
+    assistantLogEl.innerHTML = `<div class="assistant-msg assistant"><span class="assistant-role">${escapeHtml(t("assistantModel"))}</span><p class="assistant-content">${escapeHtml(t("assistantEmpty"))}</p></div>`;
     return;
   }
 
   assistantLogEl.innerHTML = items.map((item) => `
-    <div class="assistant-msg">
-      <span class="assistant-role">${item.role === "user" ? t("assistantYou") : t("assistantModel")}</span>
-      <p class="assistant-content">${item.content}</p>
+    <div class="assistant-msg ${item.role === "user" ? "user" : "assistant"}">
+      <span class="assistant-role">${escapeHtml(item.role === "user" ? t("assistantYou") : t("assistantModel"))}</span>
+      <p class="assistant-content">${escapeHtml(item.content)}</p>
     </div>
   `).join("");
   assistantLogEl.scrollTop = assistantLogEl.scrollHeight;
@@ -969,8 +1050,8 @@ function renderWatchlist(results = []) {
     return `
       <div class="watch-row" data-watch-code="${code}">
         <div class="watch-row-id">
-          <span class="watch-row-code">${code}</span>
-          <span class="watch-row-name">${item?.name || "-"}</span>
+          <span class="watch-row-code">${escapeHtml(code)}</span>
+          <span class="watch-row-name">${escapeHtml(item?.name || "-")}</span>
         </div>
         <span class="watch-row-price ${changeClass}">${formatNumber(item?.realtime?.price)}</span>
         <span class="watch-row-chg ${changeClass}">${changeText}</span>
@@ -1107,7 +1188,7 @@ function renderQuicklist(el, items = [], mode = "change") {
     return `
       <button type="button" class="quick-item" data-code="${item.code}">
         <div class="quick-main">
-          <strong>${item.code} ${item.name || ""}</strong>
+          <strong>${escapeHtml(item.code)} ${escapeHtml(item.name || "")}</strong>
           <span>${formatNumber(item.price)}</span>
         </div>
         <div class="quick-side">
@@ -1189,8 +1270,8 @@ async function searchStocks() {
 
     stockSearchResultsEl.innerHTML = results.map((item) => `
       <button type="button" class="search-item" data-code="${item.code}" data-name="${item.name}">
-        <span class="search-code">${item.code}</span>
-        <span class="search-name">${item.name}</span>
+        <span class="search-code">${escapeHtml(item.code)}</span>
+        <span class="search-name">${escapeHtml(item.name)}</span>
       </button>
     `).join("");
     stockSearchResultsEl.classList.add("show");
@@ -1222,7 +1303,7 @@ async function analyzeStock() {
   analyzeBtn.disabled = true;
   setStatus(t("loading"));
   analysisOutputEl.textContent = t("loading");
-  llmOutputEl.textContent = useLlm ? t("gptLoading") : t("gptDisabled");
+  renderEmptyAiState(useLlm ? t("gptLoading") : t("gptDisabled"));
   closeSignalOutputEl.textContent = t("loading");
   realtimeMetricsEl.innerHTML = "";
   indicatorMetricsEl.innerHTML = "";
@@ -1319,7 +1400,7 @@ async function analyzeStock() {
       renderLlmAnalysis({ status: "error", content: { detail: llmData.detail || t("unknownError") } });
     }
   } catch {
-    llmOutputEl.textContent = currentLang === "zh" ? "AI 分析请求失败，技术数据已正常加载。" : "AI analysis failed; technical data loaded.";
+    renderEmptyAiState(currentLang === "zh" ? "AI 分析请求失败，技术数据已正常加载。" : "AI analysis failed; technical data loaded.");
   }
 }
 
