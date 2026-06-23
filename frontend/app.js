@@ -1242,7 +1242,13 @@ analyzeBtn.addEventListener("click", analyzeStock);
 apiBaseInput.addEventListener("input", updateSetupNote);
 apiBaseInput.addEventListener("change", loadMarketQuicklists);
 apiBaseInput.addEventListener("change", checkGptStatus);
-stockCodeInput.addEventListener("input", searchStocks);
+
+// Debounced search — avoids hammering /stocks/search on every keypress
+let _searchDebounce = null;
+stockCodeInput.addEventListener("input", () => {
+  clearTimeout(_searchDebounce);
+  _searchDebounce = setTimeout(searchStocks, 200);
+});
 langZhBtn.addEventListener("click", () => setLanguage("zh"));
 langEnBtn.addEventListener("click", () => setLanguage("en"));
 assistantAskBtn.addEventListener("click", askAssistant);

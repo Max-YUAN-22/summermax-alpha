@@ -6,6 +6,7 @@ import secrets
 import smtplib
 import sqlite3
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -1570,38 +1571,42 @@ def get_stock_universe() -> pd.DataFrame:
     raise ValueError(f"Failed to load A-share universe: {' | '.join(errors)}")
 
 
-def build_market_quicklist_item(row: pd.Series) -> Dict[str, Any]:
+def build_market_quicklist_item(s: Dict[str, Any]) -> Dict[str, Any]:
     return {
-        "code": str(row.get("code", "")),
-        "name": str(row.get("name", "")),
-        "price": safe_float(row.get("最新价")),
-        "change_percent": safe_float(row.get("涨跌幅")),
-        "amount": safe_float(row.get("成交额")),
-        "turnover_rate": safe_float(row.get("换手率")),
-        "market_cap": safe_float(row.get("总市值")),
+        "code": s.get("code", ""),
+        "name": s.get("name", ""),
+        "price": s.get("price"),
+        "change_percent": s.get("change_percent"),
+        "amount": s.get("amount"),
+        "turnover_rate": s.get("turnover_rate"),
+        "market_cap": s.get("total_market_cap"),
     }
 
 
 def get_market_quicklists(limit: int = 8) -> Dict[str, List[Dict[str, Any]]]:
-    universe = get_stock_universe()
+    stocks = get_full_market_snapshot()
+    if not stocks:
+        return {"top_gainers": [], "top_losers": [], "active_turnover": [], "large_caps": []}
 
-    def sort_block(column: str, ascending: bool, fallback: Optional[pd.Series] = None) -> List[Dict[str, Any]]:
-        if column not in universe.columns:
-            return []
-
-        working = universe.copy()
-        working[column] = pd.to_numeric(working[column], errors="coerce")
-        working = working.dropna(subset=[column])
-        if fallback is not None:
-            working = working.loc[fallback(working)]
-        working = working.sort_values(column, ascending=ascending).head(limit)
-        return [build_market_quicklist_item(row) for _, row in working.iterrows()]
+    gainers = sorted(
+        [s for s in stocks if (s.get("change_percent") or 0) > 0],
+        key=lambda x: x.get("change_percent") or 0, reverse=True,
+    )[:limit]
+    losers = sorted(
+        [s for s in stocks if (s.get("change_percent") or 0) < 0],
+        key=lambda x: x.get("change_percent") or 0,
+    )[:limit]
+    active = sorted(stocks, key=lambda x: x.get("amount") or 0, reverse=True)[:limit]
+    caps = sorted(
+        [s for s in stocks if s.get("total_market_cap")],
+        key=lambda x: x.get("total_market_cap") or 0, reverse=True,
+    )[:limit]
 
     return {
-        "top_gainers": sort_block("涨跌幅", ascending=False, fallback=lambda df: df["涨跌幅"] > 0),
-        "top_losers": sort_block("涨跌幅", ascending=True, fallback=lambda df: df["涨跌幅"] < 0),
-        "active_turnover": sort_block("成交额", ascending=False),
-        "large_caps": sort_block("总市值", ascending=False),
+        "top_gainers": [build_market_quicklist_item(s) for s in gainers],
+        "top_losers":  [build_market_quicklist_item(s) for s in losers],
+        "active_turnover": [build_market_quicklist_item(s) for s in active],
+        "large_caps":  [build_market_quicklist_item(s) for s in caps],
     }
 
 
@@ -2366,17 +2371,28 @@ def analyze_watchlist(
     if not parsed_codes:
         raise HTTPException(status_code=400, detail="No stock codes provided.")
 
-    results: List[Dict[str, Any]] = []
-    errors: List[Dict[str, str]] = []
+    valid_codes = [c for c in parsed_codes[:20] if c.isdigit() and len(c) == 6]
+    invalid = [{"code": c, "detail": "Invalid 6-digit stock code."} for c in parsed_codes[:20] if not (c.isdigit() and len(c) == 6)]
 
-    for code in parsed_codes[:20]:
-        if not code.isdigit() or len(code) != 6:
-            errors.append({"code": code, "detail": "Invalid 6-digit stock code."})
-            continue
+    results: List[Dict[str, Any]] = []
+    errors: List[Dict[str, str]] = list(invalid)
+
+    def _fetch(code: str):
         try:
-            results.append(build_snapshot(code, include_llm=use_llm))
-        except ValueError as exc:
-            errors.append({"code": code, "detail": str(exc)})
+            return build_snapshot(code, include_llm=use_llm), None
+        except Exception as exc:
+            return None, {"code": code, "detail": str(exc)}
+
+    with ThreadPoolExecutor(max_workers=min(5, len(valid_codes) or 1)) as pool:
+        futures = {pool.submit(_fetch, c): c for c in valid_codes}
+        for future in as_completed(futures):
+            snap, err = future.result()
+            if snap:
+                results.append(snap)
+            elif err:
+                errors.append(err)
+
+    results.sort(key=lambda x: x.get("code", ""))
 
     return {
         "results": results,
@@ -2985,6 +3001,7 @@ def _fetch_market_data() -> List[Dict[str, Any]]:
                 amount = safe_float(row.get("成交额")) or 0
                 pe_ratio = safe_float(row.get("市盈率-动态"))
                 pb_ratio = safe_float(row.get("市净率"))
+                total_market_cap = safe_float(row.get("总市值"))
                 # Qlib-style composite quality score:
                 # reward moderate gain + high vol_ratio + healthy turnover
                 # penalise near-limit stocks (>9%) and very low volume
@@ -3007,6 +3024,7 @@ def _fetch_market_data() -> List[Dict[str, Any]]:
                     "vol_ratio": vol_ratio,
                     "pe_ratio": pe_ratio,
                     "pb_ratio": pb_ratio,
+                    "total_market_cap": total_market_cap,
                     "rise_speed": safe_float(row.get("涨速")) or 0,
                     "quality_score": round(quality, 2),
                 })
