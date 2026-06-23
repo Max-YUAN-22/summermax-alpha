@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SummerMax Alpha · 四象限风险全景</title>
-    <link rel="stylesheet" href="/app/theme.css?v=20260623-nav1" />
+    <link rel="stylesheet" href="/app/theme.css?v=20260624-hotfix2" />
     <style>
       /* ══ CSS variables ══ */
       :root {
@@ -543,7 +543,7 @@
       </div><!-- /canvas-area -->
     </div><!-- /shell -->
 
-    <script src="/app/theme.js?v=20260624-hotfix1"></script>
+    <script src="/app/theme.js?v=20260624-hotfix2"></script>
     <script>
     /* ═══════════════════════════════════════════════════════════════════
        SummerMax Alpha — 四象限风险全景  (quadrant.html inline script)
@@ -551,6 +551,7 @@
 
     // ── Constants ─────────────────────────────────────────────────────────────
 
+    const DEFAULT_API_BASE = `${window.location.origin}`;
     const EM_CLIST_URL   = "https://82.push2.eastmoney.com/api/qt/clist/get";
     const ALL_STOCK_FS   = [
       "m:0+t:6+f:!50",
@@ -561,6 +562,12 @@
     ].join(",");
     const STOCK_FIELDS   = "f2,f3,f6,f8,f10,f12,f14";
     // f2=price  f3=change_pct  f6=amount  f8=turnover_rate  f10=vol_ratio  f12=code  f14=name
+
+    function getApiBase() {
+      const saved = localStorage.getItem("summermax-alpha-api-base");
+      const preferred = location.hostname.includes("onrender.com") ? DEFAULT_API_BASE : (saved || DEFAULT_API_BASE);
+      return preferred.trim().replace(/\/+$/, "");
+    }
 
     // Chart axis ranges
     const X_MIN = -10, X_MAX = 10;   // change_percent %
@@ -620,6 +627,20 @@
     // ── Fetch all A-shares concurrently ──────────────────────────────────────
 
     async function fetchAllStocks() {
+      try {
+        const res = await fetch(`${getApiBase()}/market/stocks`, { signal: AbortSignal.timeout(15000) });
+        if (res.ok) {
+          const data = await res.json();
+          const stocks = Array.isArray(data.stocks) ? data.stocks.filter((s) => s && s.code && Number(s.price) > 0) : [];
+          if (stocks.length) {
+            loadProgress.style.width = "100%";
+            return stocks;
+          }
+        }
+      } catch (_) {
+        // Backend empty/unavailable: continue with direct EastMoney fallback.
+      }
+
       const PAGE_SIZE = 500;
       const PAGES     = 12;
       let   completed = 0;
@@ -992,7 +1013,7 @@
     canvas.addEventListener("click", (e) => {
       if (hoveredIdx >= 0) {
         const code = allStocks[hoveredIdx].code;
-        window.location.href = `workspace.html?code=${code}`;
+        window.location.href = `/workspace?code=${code}`;
       }
     });
 

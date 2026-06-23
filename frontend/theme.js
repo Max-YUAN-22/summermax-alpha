@@ -53,14 +53,13 @@
   };
 
   const NAV = [
-    { href: "scan.html",      label: "市场扫描",  icon: I.scan },
-    { href: "workspace.html", label: "工作台",    icon: I.workspace },
-    { href: "chat.html",      label: "AI 分析师", icon: I.chat },
-    { href: "picker.html",    label: "选股器",    icon: I.picker },
-    { href: "quadrant.html",  label: "四象限",    icon: I.quadrant },
-    { href: "backtest.html",  label: "回测",      icon: I.backtest },
-    // divider then settings
-    { href: "settings.html",  label: "设置",      icon: I.settings, divider: true },
+    { href: "/scan",      label: "市场扫描",  icon: I.scan },
+    { href: "/workspace", label: "工作台",    icon: I.workspace },
+    { href: "/chat",      label: "AI 分析师", icon: I.chat },
+    { href: "/picker",    label: "选股器",    icon: I.picker },
+    { href: "/quadrant",  label: "四象限",    icon: I.quadrant },
+    { href: "/backtest",  label: "回测",      icon: I.backtest },
+    { href: "/settings",  label: "设置",      icon: I.settings, divider: true },
   ];
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -245,8 +244,8 @@
   // Inject sidebar (skips landing/auth pages)
   // ─────────────────────────────────────────────────────────────────────────────
   function injectSidebar() {
-    const page = (location.pathname.split("/").pop() || "index.html").toLowerCase();
-    if (["index.html", "", "auth.html", "debug.html"].includes(page)) return;
+    const page = location.pathname.split("/").pop().toLowerCase();
+    if (["", "index", "home", "auth", "debug"].includes(page)) return;
     if (document.getElementById("__sb")) return;
 
     // Inject CSS
@@ -262,7 +261,7 @@
     let navHtml = "";
     NAV.forEach(n => {
       if (n.divider) navHtml += `<div class="sb-div"></div>`;
-      const isActive = page === n.href.toLowerCase();
+      const isActive = page === n.href.replace(/^\//, "");
       navHtml += `<a href="${n.href}" class="sb-item${isActive ? " act" : ""}" title="${n.label}">
         <span class="sb-icon">${n.icon}</span>
         <span class="sb-label">${n.label}</span>

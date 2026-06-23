@@ -3108,26 +3108,32 @@ def _fetch_market_data() -> List[Dict[str, Any]]:
         pass
 
     # Fallback: EastMoney direct pagination
+    # Build URL as raw string — requests.params encodes '+' as '%2B' which
+    # breaks EastMoney's fs filter syntax (same issue noted in scan.js).
     if not stocks:
-        _fs = "m:0+t:6,m:0+t:13,m:0+t:80,m:1+t:2,m:1+t:23"
+        _em_base = "https://82.push2.eastmoney.com/api/qt/clist/get"
+        _em_fs = "m:0+t:6,m:0+t:13,m:0+t:80,m:1+t:2,m:1+t:23"
+        _em_fields = "f2,f3,f6,f8,f10,f11,f12,f14"
+        _em_ut = "bd1d9ddb04089700cf9c27f6f7426281"
+        _em_headers = {**DEFAULT_HEADERS, "Referer": "https://quote.eastmoney.com/center/boardlist.html"}
         seen: set = set()
+        consecutive_empty = 0
         for page in range(1, 13):
             try:
-                resp = requests.get(
-                    "https://82.push2.eastmoney.com/api/qt/clist/get",
-                    params={
-                        "pn": page, "pz": "500", "po": "1", "np": "1",
-                        "ut": "bd1d9ddb04089700cf9c27f6f7426281",
-                        "fltt": "2", "invt": "2", "fid": "f3", "fs": _fs,
-                        "fields": "f2,f3,f6,f8,f10,f11,f12,f14",
-                    },
-                    headers={**DEFAULT_HEADERS, "Referer": "https://quote.eastmoney.com/center/boardlist.html"},
-                    timeout=12,
+                url = (
+                    f"{_em_base}?pn={page}&pz=500&po=1&np=1"
+                    f"&ut={_em_ut}&fltt=2&invt=2&fid=f3"
+                    f"&fs={_em_fs}&fields={_em_fields}"
                 )
+                resp = requests.get(url, headers=_em_headers, timeout=15)
                 resp.raise_for_status()
                 diffs = (resp.json().get("data") or {}).get("diff") or []
                 if not diffs:
-                    break
+                    consecutive_empty += 1
+                    if consecutive_empty >= 2:
+                        break
+                    continue
+                consecutive_empty = 0
                 for item in diffs:
                     code = str(item.get("f12") or "").zfill(6)
                     if not code or code == "000000" or code in seen:
@@ -3161,7 +3167,7 @@ def _fetch_market_data() -> List[Dict[str, Any]]:
                         "quality_score": round(quality, 2),
                     })
             except Exception:
-                break
+                continue  # skip failed page, try next
 
     return _apply_cross_sectional_scoring(stocks)
 
@@ -3457,6 +3463,8 @@ def get_market_stocks() -> Dict[str, Any]:
         stocks = get_full_market_snapshot()
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Market data fetch failed: {exc}") from exc
+    if not stocks:
+        raise HTTPException(status_code=503, detail="Market snapshot is warming up, please retry shortly.")
     return {
         "stocks": stocks,
         "count": len(stocks),
