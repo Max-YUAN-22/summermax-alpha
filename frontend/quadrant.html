@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SummerMax Alpha · 四象限风险全景</title>
+    <link rel="stylesheet" href="/app/theme.css?v=20260623-nav1" />
+    <style>
+      /* ══ CSS variables ══ */
+      :root {
+        --bg:           #07111f;
+        --line:         rgba(132, 157, 189, 0.12);
+        --line-strong:  rgba(132, 157, 189, 0.22);
+        --text:         #edf4ff;
+        --muted:        #8ea3bd;
+        --muted-2:      #5a7490;
+        --accent:       #66d1ff;
+        --accent-dim:   rgba(102, 209, 255, 0.10);
+        --accent-border:rgba(102, 209, 255, 0.20);
+        --bull:         #2ed09a;
+        --bear:         #ff6b7e;
+
+        /* quadrant zone colours */
+        --q-opp:        rgba(46, 208, 154, 0.055);   /* top-right  机会区 */
+        --q-crowd:      rgba(255, 165, 50,  0.055);   /* top-left   拥挤区 */
+        --q-def:        rgba(80, 160, 255,  0.055);   /* bot-right  防御区 */
+        --q-bubble:     rgba(255, 107, 126, 0.055);   /* bot-left   泡沫区 */
+
+        --sidebar-w:    220px;
+        --topbar-h:     52px;
+      }
+
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      html, body {
+        height: 100%;
+        color: var(--text);
+        font-family: "PingFang SC", "Noto Sans SC", "Avenir Next", sans-serif;
+        font-size: 14px;
+        background: var(--bg);
+        background-image:
+          radial-gradient(ellipse 55% 35% at 15% -5%, rgba(102,209,255,0.08) 0%, transparent 55%),
+          radial-gradient(ellipse 45% 28% at 85%  5%, rgba(46,208,154,0.05) 0%, transparent 50%);
+        overflow: hidden;
+      }
+
+      ::-webkit-scrollbar { width: 4px; height: 4px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: rgba(102,209,255,0.18); border-radius: 2px; }
+
+      /* ══ Topbar ══ */
+      .topbar {
+        height: var(--topbar-h);
+        display: flex; align-items: center; gap: 12px;
+        padding: 0 20px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(5, 12, 24, 0.92);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        position: sticky; top: 0; z-index: 100;
+        flex-shrink: 0;
+      }
+
+      .brand { display: flex; align-items: center; gap: 9px; flex-shrink: 0; }
+
+      .brand-mark {
+        display: grid; place-items: center;
+        width: 32px; height: 32px; border-radius: 9px;
+        background: linear-gradient(135deg, rgba(102,209,255,0.24), rgba(36,163,135,0.30));
+        border: 1px solid rgba(102,209,255,0.22);
+        font-size: 0.78rem; font-weight: 800; flex-shrink: 0;
+      }
+
+      .brand-name { font-size: 0.9rem; font-weight: 700; }
+
+      .brand-sep { width: 1px; height: 18px; background: var(--line); flex-shrink: 0; }
+
+      .page-title {
+        font-size: 0.84rem; font-weight: 700;
+        background: linear-gradient(90deg, var(--accent) 0%, #2ed09a 100%);
+        -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        background-clip: text;
+        white-space: nowrap;
+      }
+
+      .topbar-spacer { flex: 1; min-width: 0; }
+
+      .page-nav { display: flex; gap: 2px; }
+      .page-nav a {
+        padding: 5px 11px; border-radius: 8px;
+        text-decoration: none; color: var(--muted);
+        font-size: 0.82rem; font-weight: 500;
+        transition: background 0.15s, color 0.15s; white-space: nowrap;
+      }
+      .page-nav a:hover  { background: rgba(255,255,255,0.06); color: var(--text); }
+      .page-nav a.active { background: var(--accent-dim); color: var(--accent); font-weight: 700; }
+
+      /* ══ Main shell ══ */
+      .shell {
+        display: flex;
+        height: calc(100vh - var(--topbar-h));
+        overflow: hidden;
+      }
+
+      /* ══ Sidebar ══ */
+      .sidebar {
+        width: var(--sidebar-w);
+        flex-shrink: 0;
+        display: flex;
+        flex-direction: column;
+        border-right: 1px solid var(--line);
+        background: rgba(5, 12, 23, 0.40);
+        overflow-y: auto;
+        overflow-x: hidden;
+      }
+
+      .sidebar-head {
+        padding: 12px 16px 10px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(4, 11, 22, 0.55);
+        flex-shrink: 0;
+      }
+
+      .sidebar-head-title {
+        font-size: 0.68rem; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted-2);
+        margin-bottom: 6px;
+      }
+
+      .stat-total {
+        font-size: 1.35rem; font-weight: 800;
+        color: var(--text); line-height: 1.1;
+      }
+
+      .stat-total small {
+        font-size: 0.7rem; font-weight: 500; color: var(--muted-2); margin-left: 4px;
+      }
+
+      .stat-updown {
+        display: flex; gap: 8px; margin-top: 6px;
+      }
+
+      .stat-up, .stat-down {
+        display: flex; align-items: center; gap: 4px;
+        font-size: 0.74rem; font-weight: 700;
+        padding: 2px 8px; border-radius: 5px;
+      }
+      .stat-up {
+        color: var(--bull);
+        background: rgba(46,208,154,0.10); border: 1px solid rgba(46,208,154,0.16);
+      }
+      .stat-down {
+        color: var(--bear);
+        background: rgba(255,107,126,0.10); border: 1px solid rgba(255,107,126,0.16);
+      }
+
+      /* quadrant stat cards */
+      .q-cards { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+
+      .q-card {
+        border-radius: 9px; padding: 10px 12px;
+        border: 1px solid transparent;
+        cursor: default;
+      }
+
+      .q-card-opp    { background: rgba(46,208,154,0.07);  border-color: rgba(46,208,154,0.18); }
+      .q-card-crowd  { background: rgba(255,165,50, 0.07); border-color: rgba(255,165,50, 0.18); }
+      .q-card-def    { background: rgba(80,160,255, 0.07); border-color: rgba(80,160,255, 0.18); }
+      .q-card-bubble { background: rgba(255,107,126,0.07); border-color: rgba(255,107,126,0.18); }
+
+      .q-card-label {
+        font-size: 0.68rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 3px;
+      }
+      .q-card-opp    .q-card-label { color: var(--bull); }
+      .q-card-crowd  .q-card-label { color: #ffa532; }
+      .q-card-def    .q-card-label { color: #50a0ff; }
+      .q-card-bubble .q-card-label { color: var(--bear); }
+
+      .q-card-sub {
+        font-size: 0.64rem; color: var(--muted-2); margin-bottom: 5px;
+      }
+
+      .q-card-count {
+        font-size: 1.25rem; font-weight: 800; line-height: 1;
+        color: var(--text);
+      }
+      .q-card-count small { font-size: 0.66rem; color: var(--muted-2); margin-left: 3px; font-weight: 500; }
+
+      /* progress bar inside card */
+      .q-bar-track {
+        margin-top: 6px; height: 3px; border-radius: 2px;
+        background: rgba(255,255,255,0.07);
+        overflow: hidden;
+      }
+      .q-bar-fill { height: 100%; border-radius: 2px; transition: width 0.4s ease; }
+      .q-card-opp    .q-bar-fill { background: var(--bull); }
+      .q-card-crowd  .q-bar-fill { background: #ffa532; }
+      .q-card-def    .q-bar-fill { background: #50a0ff; }
+      .q-card-bubble .q-bar-fill { background: var(--bear); }
+
+      /* sidebar divider */
+      .sidebar-divider {
+        height: 1px; background: var(--line); margin: 2px 14px;
+      }
+
+      /* last-updated note */
+      .sidebar-footer {
+        padding: 10px 16px;
+        font-size: 0.65rem; color: var(--muted-2); line-height: 1.55;
+        border-top: 1px solid var(--line);
+        margin-top: auto;
+      }
+
+      /* reload button */
+      .btn-reload {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 6px 14px; border-radius: 8px;
+        background: var(--accent-dim); border: 1px solid var(--accent-border);
+        color: var(--accent); cursor: pointer;
+        font-size: 0.76rem; font-weight: 700;
+        transition: background 0.14s;
+        width: 100%; justify-content: center; margin-top: 8px;
+      }
+      .btn-reload:hover { background: rgba(102,209,255,0.18); }
+      .btn-reload:disabled { opacity: 0.45; cursor: not-allowed; }
+
+      /* ══ Canvas area ══ */
+      .canvas-area {
+        flex: 1;
+        position: relative;
+        overflow: hidden;
+        background: rgba(6, 14, 26, 0.20);
+      }
+
+      #quadrantCanvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+        cursor: crosshair;
+      }
+
+      /* Loading overlay */
+      .canvas-overlay {
+        position: absolute; inset: 0;
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        gap: 14px;
+        background: rgba(7, 17, 31, 0.82);
+        z-index: 10;
+        pointer-events: none;
+        transition: opacity 0.3s;
+      }
+      .canvas-overlay.hidden { opacity: 0; pointer-events: none; }
+
+      .overlay-icon {
+        width: 48px; height: 48px; border-radius: 14px;
+        display: grid; place-items: center;
+        background: rgba(102,209,255,0.07); border: 1px solid var(--accent-border);
+        font-size: 1.4rem; color: var(--muted-2);
+      }
+
+      .overlay-title { font-size: 0.95rem; font-weight: 700; color: var(--text); }
+      .overlay-sub   { font-size: 0.78rem; color: var(--muted-2); text-align: center; max-width: 260px; line-height: 1.6; }
+
+      .spin {
+        display: inline-block; width: 18px; height: 18px;
+        border: 2px solid rgba(102,209,255,0.14); border-top-color: var(--accent);
+        border-radius: 50%; animation: spin 0.75s linear infinite;
+        vertical-align: middle;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      /* progress bar in overlay */
+      .load-progress-track {
+        width: 200px; height: 3px; border-radius: 2px;
+        background: rgba(102,209,255,0.10);
+        overflow: hidden;
+      }
+      .load-progress-fill {
+        height: 100%; border-radius: 2px;
+        background: linear-gradient(90deg, var(--accent), var(--bull));
+        transition: width 0.25s ease;
+        width: 0%;
+      }
+
+      /* Error overlay */
+      .error-overlay {
+        position: absolute; inset: 0;
+        display: none; flex-direction: column;
+        align-items: center; justify-content: center;
+        gap: 14px;
+        background: rgba(7, 17, 31, 0.88);
+        z-index: 11;
+        text-align: center; padding: 32px;
+      }
+      .error-overlay.visible { display: flex; }
+
+      .error-title { font-size: 0.95rem; font-weight: 700; color: var(--bear); }
+      .error-sub   { font-size: 0.8rem; color: var(--muted-2); line-height: 1.65; max-width: 300px; }
+
+      .btn-retry {
+        display: inline-block; padding: 7px 22px; border-radius: 9px;
+        border: 1px solid var(--accent-border); background: var(--accent-dim);
+        color: var(--accent); cursor: pointer;
+        font-size: 0.78rem; font-weight: 700;
+        transition: background 0.14s;
+      }
+      .btn-retry:hover { background: rgba(102,209,255,0.18); }
+
+      /* ══ Tooltip ══ */
+      #dotTooltip {
+        position: absolute;
+        pointer-events: none;
+        display: none;
+        z-index: 20;
+        background: rgba(8, 18, 32, 0.96);
+        border: 1px solid var(--accent-border);
+        border-radius: 10px;
+        padding: 10px 13px;
+        min-width: 172px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.45);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+      }
+
+      .tt-code  { font-size: 0.72rem; font-weight: 700; color: var(--accent); }
+      .tt-name  { font-size: 0.85rem; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+      .tt-row   { display: flex; justify-content: space-between; gap: 12px; margin-top: 3px; }
+      .tt-label { font-size: 0.7rem; color: var(--muted-2); }
+      .tt-val   { font-size: 0.72rem; font-weight: 700; color: var(--text); }
+      .tt-val.up   { color: var(--bull); }
+      .tt-val.down { color: var(--bear); }
+      .tt-hint  { font-size: 0.65rem; color: var(--muted-2); margin-top: 7px; border-top: 1px solid var(--line); padding-top: 6px; }
+
+      /* ══ Light mode overrides ══ */
+      [data-theme="light"] body {
+        background: #eef2f8;
+        background-image:
+          radial-gradient(ellipse 55% 35% at 15% -5%, rgba(0,136,204,0.07) 0%, transparent 55%),
+          radial-gradient(ellipse 45% 28% at 85%  5%, rgba(26,156,106,0.05) 0%, transparent 50%);
+      }
+
+      [data-theme="light"] .topbar {
+        background: rgba(238, 244, 252, 0.97);
+        border-bottom-color: rgba(50,80,130,0.13);
+      }
+
+      [data-theme="light"] .sidebar {
+        background: rgba(240, 246, 254, 0.72);
+        border-right-color: rgba(50,80,130,0.11);
+      }
+
+      [data-theme="light"] .sidebar-head { background: rgba(232, 241, 252, 0.90); }
+
+      [data-theme="light"] .canvas-area { background: rgba(235, 242, 252, 0.30); }
+
+      [data-theme="light"] .canvas-overlay { background: rgba(238, 244, 252, 0.88); }
+
+      [data-theme="light"] .error-overlay { background: rgba(238, 244, 252, 0.93); }
+
+      [data-theme="light"] #dotTooltip {
+        background: rgba(248, 252, 255, 0.97);
+        border-color: rgba(0,136,204,0.22);
+        box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+      }
+      [data-theme="light"] .tt-name { color: #0e1d2e; }
+      [data-theme="light"] .tt-val  { color: #0e1d2e; }
+
+      [data-theme="light"] .q-card-opp    { background: rgba(26,156,106,0.07); border-color: rgba(26,156,106,0.20); }
+      [data-theme="light"] .q-card-crowd  { background: rgba(200,130,20, 0.07); border-color: rgba(200,130,20, 0.20); }
+      [data-theme="light"] .q-card-def    { background: rgba(0,102,204,  0.07); border-color: rgba(0,102,204,  0.20); }
+      [data-theme="light"] .q-card-bubble { background: rgba(224,61,78,  0.07); border-color: rgba(224,61,78,  0.20); }
+
+      /* ══ Responsive ══ */
+      @media (max-width: 860px) {
+        html, body { height: auto; overflow: auto; }
+
+        .shell {
+          flex-direction: column;
+          height: auto;
+          overflow: visible;
+        }
+
+        .sidebar {
+          width: 100%;
+          flex-direction: row;
+          flex-wrap: wrap;
+          border-right: none;
+          border-bottom: 1px solid var(--line);
+          overflow-x: auto;
+          overflow-y: hidden;
+          padding: 10px 12px;
+          gap: 8px;
+          align-items: flex-start;
+        }
+
+        .sidebar-head { padding: 0; border: none; background: none; min-width: 120px; }
+        .sidebar-head-title { display: none; }
+        .sidebar-footer { display: none; }
+        .q-cards { flex-direction: row; flex-wrap: wrap; padding: 0; gap: 6px; flex: 1; }
+        .q-card { min-width: 100px; }
+        .sidebar-divider { display: none; }
+
+        .canvas-area {
+          height: calc(100vw * 0.7);
+          min-height: 300px;
+        }
+
+        .page-nav a:not(.active) { display: none; }
+        .brand-name { display: none; }
+      }
+    </style>
+  </head>
+  <body>
+
+    <!-- ══ Topbar ══ -->
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">Sα</div>
+        <span class="brand-name">SummerMax Alpha</span>
+      </div>
+      <div class="brand-sep"></div>
+      <span class="page-title">四象限风险全景</span>
+      <div class="topbar-spacer"></div>
+      <nav class="page-nav">
+        <a href="/home">首页</a>
+        <a href="/scan">市场扫描</a>
+        <a href="/workspace">工作台</a>
+        <a href="/chat">AI 分析师</a>
+        <a href="/tools" class="active">工具箱</a>
+        <a href="/settings">设置</a>
+      </nav>
+      <button class="theme-toggle" onclick="__toggleTheme()" title="切换浅色模式">☀</button>
+    </header>
+
+    <!-- ══ Main shell ══ -->
+    <div class="shell">
+
+      <!-- ── Stats sidebar ── -->
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-head">
+          <div class="sidebar-head-title">全市场概况</div>
+          <div class="stat-total" id="statTotal">—<small>只</small></div>
+          <div class="stat-updown">
+            <span class="stat-up"   id="statUp">↑ —</span>
+            <span class="stat-down" id="statDown">↓ —</span>
+          </div>
+        </div>
+
+        <div class="sidebar-divider"></div>
+
+        <div class="q-cards">
+          <!-- 机会区 -->
+          <div class="q-card q-card-opp">
+            <div class="q-card-label">机会区</div>
+            <div class="q-card-sub">上涨 · 高换手</div>
+            <div class="q-card-count"><span id="cntOpp">—</span><small>只</small></div>
+            <div class="q-bar-track"><div class="q-bar-fill" id="barOpp" style="width:0%"></div></div>
+          </div>
+          <!-- 拥挤区 -->
+          <div class="q-card q-card-crowd">
+            <div class="q-card-label">拥挤区</div>
+            <div class="q-card-sub">下跌 · 高换手</div>
+            <div class="q-card-count"><span id="cntCrowd">—</span><small>只</small></div>
+            <div class="q-bar-track"><div class="q-bar-fill" id="barCrowd" style="width:0%"></div></div>
+          </div>
+          <!-- 防御区 -->
+          <div class="q-card q-card-def">
+            <div class="q-card-label">防御区</div>
+            <div class="q-card-sub">上涨 · 低换手</div>
+            <div class="q-card-count"><span id="cntDef">—</span><small>只</small></div>
+            <div class="q-bar-track"><div class="q-bar-fill" id="barDef" style="width:0%"></div></div>
+          </div>
+          <!-- 泡沫区 -->
+          <div class="q-card q-card-bubble">
+            <div class="q-card-label">泡沫区</div>
+            <div class="q-card-sub">下跌 · 低换手</div>
+            <div class="q-card-count"><span id="cntBubble">—</span><small>只</small></div>
+            <div class="q-bar-track"><div class="q-bar-fill" id="barBubble" style="width:0%"></div></div>
+          </div>
+        </div>
+
+        <div class="sidebar-divider"></div>
+
+        <div style="padding: 10px 14px;">
+          <button class="btn-reload" id="btnReload" onclick="startLoad()">↺ 重新加载</button>
+        </div>
+
+        <div class="sidebar-footer" id="sidebarFooter">
+          数据来源：东方财富<br>
+          X轴：涨跌幅 (−10 ~ +10%)<br>
+          Y轴：换手率 (0 ~ 15%)<br>
+          分界线：Y = 3% (近似中位换手)
+        </div>
+      </aside>
+
+      <!-- ── Canvas area ── -->
+      <div class="canvas-area" id="canvasArea">
+
+        <canvas id="quadrantCanvas"></canvas>
+
+        <!-- Loading overlay -->
+        <div class="canvas-overlay" id="loadingOverlay">
+          <div class="overlay-icon"><span class="spin"></span></div>
+          <div class="overlay-title" id="overlayTitle">正在加载全市场数据…</div>
+          <div class="overlay-sub"  id="overlaySub">并发拉取 12 页 × 500 只<br>首次约需 5 ~ 15 秒</div>
+          <div class="load-progress-track">
+            <div class="load-progress-fill" id="loadProgress"></div>
+          </div>
+        </div>
+
+        <!-- Error overlay -->
+        <div class="error-overlay" id="errorOverlay">
+          <div class="overlay-icon">⚠</div>
+          <div class="error-title">数据加载失败</div>
+          <div class="error-sub" id="errorMsg">无法连接东方财富数据接口。请检查网络后重试。</div>
+          <button class="btn-retry" onclick="startLoad()">重新加载</button>
+        </div>
+
+        <!-- Tooltip -->
+        <div id="dotTooltip">
+          <div class="tt-code" id="ttCode">000001</div>
+          <div class="tt-name" id="ttName">平安银行</div>
+          <div class="tt-row">
+            <span class="tt-label">涨跌</span>
+            <span class="tt-val"  id="ttChg">—</span>
+          </div>
+          <div class="tt-row">
+            <span class="tt-label">换手率</span>
+            <span class="tt-val"  id="ttTurn">—</span>
+          </div>
+          <div class="tt-row">
+            <span class="tt-label">量比</span>
+            <span class="tt-val"  id="ttVol">—</span>
+          </div>
+          <div class="tt-row">
+            <span class="tt-label">成交额</span>
+            <span class="tt-val"  id="ttAmt">—</span>
+          </div>
+          <div class="tt-hint">点击 → 工作台</div>
+        </div>
+
+      </div><!-- /canvas-area -->
+    </div><!-- /shell -->
+
+    <script src="/app/theme.js?v=20260623-nav1"></script>
+    <script>
+    /* ═══════════════════════════════════════════════════════════════════
+       SummerMax Alpha — 四象限风险全景  (quadrant.html inline script)
+       ═══════════════════════════════════════════════════════════════════ */
+
+    // ── Constants ─────────────────────────────────────────────────────────────
+
+    const EM_CLIST_URL   = "https://82.push2.eastmoney.com/api/qt/clist/get";
+    const ALL_STOCK_FS   = [
+      "m:0+t:6+f:!50",
+      "m:0+t:13+f:!50",
+      "m:0+t:80+f:!50",
+      "m:1+t:2+f:!50",
+      "m:1+t:23+f:!50",
+    ].join(",");
+    const STOCK_FIELDS   = "f2,f3,f6,f8,f10,f12,f14";
+    // f2=price  f3=change_pct  f6=amount  f8=turnover_rate  f10=vol_ratio  f12=code  f14=name
+
+    // Chart axis ranges
+    const X_MIN = -10, X_MAX = 10;   // change_percent %
+    const Y_MIN =   0, Y_MAX = 15;   // turnover_rate  %
+    const X_ZERO = 0;                 // vertical divider
+    const Y_DIV  = 3;                 // horizontal divider (approx median turnover)
+    const PAD    = { top: 36, right: 28, bottom: 44, left: 52 };
+
+    // ── State ─────────────────────────────────────────────────────────────────
+
+    let allStocks = [];           // normalised stock objects
+    let dotPositions = [];        // [{px, py, idx}] pixel coords after last render
+    let hoveredIdx = -1;
+    let animFrame  = null;
+    let isLight    = false;       // tracks current theme for canvas colours
+
+    // ── DOM refs ──────────────────────────────────────────────────────────────
+
+    const canvas          = document.getElementById("quadrantCanvas");
+    const ctx             = canvas.getContext("2d");
+    const canvasArea      = document.getElementById("canvasArea");
+    const loadingOverlay  = document.getElementById("loadingOverlay");
+    const errorOverlay    = document.getElementById("errorOverlay");
+    const loadProgress    = document.getElementById("loadProgress");
+    const overlayTitle    = document.getElementById("overlayTitle");
+    const overlaySub      = document.getElementById("overlaySub");
+    const errorMsg        = document.getElementById("errorMsg");
+    const tooltip         = document.getElementById("dotTooltip");
+    const btnReload       = document.getElementById("btnReload");
+
+    const statTotal   = document.getElementById("statTotal");
+    const statUp      = document.getElementById("statUp");
+    const statDown    = document.getElementById("statDown");
+    const cntOpp      = document.getElementById("cntOpp");
+    const cntCrowd    = document.getElementById("cntCrowd");
+    const cntDef      = document.getElementById("cntDef");
+    const cntBubble   = document.getElementById("cntBubble");
+    const barOpp      = document.getElementById("barOpp");
+    const barCrowd    = document.getElementById("barCrowd");
+    const barDef      = document.getElementById("barDef");
+    const barBubble   = document.getElementById("barBubble");
+
+    // ── EastMoney fetch helper ────────────────────────────────────────────────
+
+    async function emGet(params) {
+      const url  = new URL(EM_CLIST_URL);
+      const base = { np: "1", fltt: "2", invt: "2", ut: "bd1d9ddb04089700cf9c27f6f7426281" };
+      Object.entries({ ...base, ...params }).forEach(([k, v]) => url.searchParams.set(k, v));
+      const res  = await fetch(url.toString(), {
+        headers: { "Referer": "https://quote.eastmoney.com/center/gridlist.html" },
+        signal:  AbortSignal.timeout(20000),
+      });
+      const data = await res.json();
+      return (data.data || {}).diff || [];
+    }
+
+    // ── Fetch all A-shares concurrently ──────────────────────────────────────
+
+    async function fetchAllStocks() {
+      const PAGE_SIZE = 500;
+      const PAGES     = 12;
+      let   completed = 0;
+
+      const pages = await Promise.all(
+        Array.from({ length: PAGES }, (_, i) =>
+          emGet({
+            pn: String(i + 1), pz: String(PAGE_SIZE),
+            po: "1", fid: "f3",
+            fs:     ALL_STOCK_FS,
+            fields: STOCK_FIELDS,
+          }).then(result => {
+            completed++;
+            loadProgress.style.width = Math.round((completed / PAGES) * 100) + "%";
+            return result;
+          }).catch(() => {
+            completed++;
+            loadProgress.style.width = Math.round((completed / PAGES) * 100) + "%";
+            return [];
+          })
+        )
+      );
+
+      const seen   = new Set();
+      const stocks = [];
+      for (const diff of pages.flat()) {
+        const code = String(diff.f12 || "").padStart(6, "0");
+        if (!code || code === "000000" || seen.has(code)) continue;
+        seen.add(code);
+        const price  = Number(diff.f2) || 0;
+        const chgPct = Number(diff.f3);
+        if (price <= 0 || !String(diff.f14)) continue; // skip suspended / unnamed
+        stocks.push({
+          code,
+          name:          String(diff.f14 || ""),
+          price,
+          change_percent: isNaN(chgPct) ? 0 : chgPct,
+          amount:        Number(diff.f6)  || 0,
+          turnover_rate: Number(diff.f8)  || 0,
+          vol_ratio:     Number(diff.f10) || 0,
+        });
+      }
+      return stocks;
+    }
+
+    // ── Format helpers ────────────────────────────────────────────────────────
+
+    function fmtAmt(v) {
+      const n = Number(v);
+      if (!n || isNaN(n)) return "--";
+      if (n >= 1e8) return (n / 1e8).toFixed(1) + "亿";
+      if (n >= 1e4) return (n / 1e4).toFixed(0) + "万";
+      return n.toFixed(0);
+    }
+
+    function chgText(v) {
+      const n = Number(v);
+      if (isNaN(n)) return "--";
+      return (n >= 0 ? "+" : "") + n.toFixed(2) + "%";
+    }
+
+    // ── Stats sidebar update ──────────────────────────────────────────────────
+
+    function updateStats(stocks) {
+      const n    = stocks.length;
+      const up   = stocks.filter(s => s.change_percent >= 0).length;
+      const down = n - up;
+
+      const opp    = stocks.filter(s => s.change_percent >= 0 && s.turnover_rate >= Y_DIV).length;
+      const crowd  = stocks.filter(s => s.change_percent <  0 && s.turnover_rate >= Y_DIV).length;
+      const def    = stocks.filter(s => s.change_percent >= 0 && s.turnover_rate <  Y_DIV).length;
+      const bubble = stocks.filter(s => s.change_percent <  0 && s.turnover_rate <  Y_DIV).length;
+
+      statTotal.innerHTML = n + "<small>只</small>";
+      statUp.textContent    = "↑ " + up;
+      statDown.textContent  = "↓ " + down;
+
+      cntOpp.textContent    = opp;
+      cntCrowd.textContent  = crowd;
+      cntDef.textContent    = def;
+      cntBubble.textContent = bubble;
+
+      // progress bars relative to total
+      const pct = (x) => n ? Math.round(x / n * 100) : 0;
+      barOpp.style.width    = pct(opp)    + "%";
+      barCrowd.style.width  = pct(crowd)  + "%";
+      barDef.style.width    = pct(def)    + "%";
+      barBubble.style.width = pct(bubble) + "%";
+    }
+
+    // ── Canvas sizing ─────────────────────────────────────────────────────────
+
+    function resizeCanvas() {
+      const rect  = canvasArea.getBoundingClientRect();
+      const dpr   = window.devicePixelRatio || 1;
+      canvas.width  = rect.width  * dpr;
+      canvas.height = rect.height * dpr;
+      canvas.style.width  = rect.width  + "px";
+      canvas.style.height = rect.height + "px";
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      if (allStocks.length) renderChart();
+    }
+
+    // ── Map helpers ───────────────────────────────────────────────────────────
+
+    function mapX(v, w) {
+      const clamped = Math.max(X_MIN, Math.min(X_MAX, v));
+      return PAD.left + ((clamped - X_MIN) / (X_MAX - X_MIN)) * (w - PAD.left - PAD.right);
+    }
+
+    function mapY(v, h) {
+      const clamped = Math.max(Y_MIN, Math.min(Y_MAX, v));
+      // invert: high turnover → top of canvas
+      return PAD.top + ((Y_MAX - clamped) / (Y_MAX - Y_MIN)) * (h - PAD.top - PAD.bottom);
+    }
+
+    // ── Main render ───────────────────────────────────────────────────────────
+
+    function renderChart() {
+      const dpr  = window.devicePixelRatio || 1;
+      const W    = canvas.width  / dpr;
+      const H    = canvas.height / dpr;
+      const dark = document.documentElement.getAttribute("data-theme") !== "light";
+
+      ctx.clearRect(0, 0, W, H);
+
+      // — quadrant zone background fills —
+      const xZero = mapX(X_ZERO, W);
+      const yDiv  = mapY(Y_DIV,  H);
+      const xLeft = PAD.left;
+      const xRight= W - PAD.right;
+      const yTop  = PAD.top;
+      const yBot  = H - PAD.bottom;
+
+      if (dark) {
+        ctx.fillStyle = "rgba(46,208,154,0.04)";   // top-right: 机会区
+        ctx.fillRect(xZero, yTop, xRight - xZero, yDiv - yTop);
+        ctx.fillStyle = "rgba(255,165,50,0.04)";    // top-left:  拥挤区
+        ctx.fillRect(xLeft, yTop, xZero - xLeft,   yDiv - yTop);
+        ctx.fillStyle = "rgba(80,160,255,0.04)";    // bot-right: 防御区
+        ctx.fillRect(xZero, yDiv, xRight - xZero, yBot - yDiv);
+        ctx.fillStyle = "rgba(255,107,126,0.04)";   // bot-left:  泡沫区
+        ctx.fillRect(xLeft, yDiv, xZero - xLeft,   yBot - yDiv);
+      } else {
+        ctx.fillStyle = "rgba(26,156,106,0.05)";    // 机会区
+        ctx.fillRect(xZero, yTop, xRight - xZero, yDiv - yTop);
+        ctx.fillStyle = "rgba(200,120,10,0.05)";    // 拥挤区
+        ctx.fillRect(xLeft, yTop, xZero - xLeft,   yDiv - yTop);
+        ctx.fillStyle = "rgba(0,102,204,0.05)";     // 防御区
+        ctx.fillRect(xZero, yDiv, xRight - xZero, yBot - yDiv);
+        ctx.fillStyle = "rgba(220,50,60,0.05)";     // 泡沫区
+        ctx.fillRect(xLeft, yDiv, xZero - xLeft,   yBot - yDiv);
+      }
+
+      // — grid lines (subtle) —
+      ctx.strokeStyle = dark ? "rgba(132,157,189,0.09)" : "rgba(80,110,160,0.10)";
+      ctx.lineWidth   = 1;
+
+      // vertical tick lines at -8,-6,-4,-2,+2,+4,+6,+8
+      [-8, -6, -4, -2, 2, 4, 6, 8].forEach(v => {
+        const x = mapX(v, W);
+        ctx.beginPath(); ctx.moveTo(x, yTop); ctx.lineTo(x, yBot); ctx.stroke();
+      });
+      // horizontal tick lines at 5,10
+      [5, 10].forEach(v => {
+        const y = mapY(v, H);
+        ctx.beginPath(); ctx.moveTo(xLeft, y); ctx.lineTo(xRight, y); ctx.stroke();
+      });
+
+      // — axis lines (stronger) —
+      ctx.strokeStyle = dark ? "rgba(132,157,189,0.22)" : "rgba(80,110,160,0.20)";
+      ctx.lineWidth   = 1;
+
+      // X baseline (y=0 turnover, i.e. bottom axis)
+      ctx.beginPath(); ctx.moveTo(xLeft, yBot); ctx.lineTo(xRight, yBot); ctx.stroke();
+      // Y baseline (x=min, i.e. left axis)
+      ctx.beginPath(); ctx.moveTo(xLeft, yTop); ctx.lineTo(xLeft, yBot);  ctx.stroke();
+
+      // — divider lines (main cross) —
+      ctx.lineWidth = 1.5;
+
+      // vertical x=0 divider
+      ctx.strokeStyle = dark ? "rgba(132,157,189,0.45)" : "rgba(80,110,160,0.40)";
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath(); ctx.moveTo(xZero, yTop); ctx.lineTo(xZero, yBot); ctx.stroke();
+
+      // horizontal y=Y_DIV divider
+      ctx.strokeStyle = dark ? "rgba(132,157,189,0.38)" : "rgba(80,110,160,0.34)";
+      ctx.beginPath(); ctx.moveTo(xLeft, yDiv); ctx.lineTo(xRight, yDiv); ctx.stroke();
+      ctx.setLineDash([]);
+
+      // — axis tick labels —
+      const textColor = dark ? "rgba(142,163,189,0.80)" : "rgba(60,85,130,0.75)";
+      ctx.fillStyle   = textColor;
+      ctx.font        = "11px 'PingFang SC', 'Noto Sans SC', sans-serif";
+      ctx.textAlign   = "center";
+
+      // X-axis labels
+      [-10, -5, 0, 5, 10].forEach(v => {
+        const x = mapX(v, W);
+        ctx.fillText((v >= 0 ? "+" : "") + v + "%", x, yBot + 16);
+      });
+
+      // Y-axis labels
+      ctx.textAlign   = "right";
+      ctx.textBaseline = "middle";
+      [0, 3, 5, 10, 15].forEach(v => {
+        const y = mapY(v, H);
+        ctx.fillText(v + "%", xLeft - 6, y);
+      });
+      ctx.textBaseline = "alphabetic";
+
+      // axis titles
+      ctx.fillStyle   = dark ? "rgba(142,163,189,0.55)" : "rgba(60,85,130,0.55)";
+      ctx.font        = "11px 'PingFang SC', 'Noto Sans SC', sans-serif";
+      ctx.textAlign   = "center";
+      ctx.fillText("涨跌幅 (%)", (xLeft + xRight) / 2, H - 6);
+
+      ctx.save();
+      ctx.translate(13, (yTop + yBot) / 2);
+      ctx.rotate(-Math.PI / 2);
+      ctx.fillText("换手率 (%)", 0, 0);
+      ctx.restore();
+
+      // — quadrant labels —
+      const qlFont = "bold 11px 'PingFang SC', 'Noto Sans SC', sans-serif";
+      ctx.font = qlFont;
+      ctx.textBaseline = "top";
+      ctx.textAlign    = "left";
+
+      const qPadX = 8, qPadY = 6;
+
+      // 机会区 — top-right
+      ctx.fillStyle = dark ? "rgba(46,208,154,0.55)" : "rgba(26,156,106,0.60)";
+      ctx.fillText("机会区", xZero + qPadX, yTop + qPadY);
+
+      // 拥挤区 — top-left
+      ctx.fillStyle = dark ? "rgba(255,165,50,0.55)" : "rgba(200,120,10,0.60)";
+      ctx.textAlign = "right";
+      ctx.fillText("拥挤区", xZero - qPadX, yTop + qPadY);
+
+      // 防御区 — bottom-right
+      ctx.fillStyle = dark ? "rgba(80,160,255,0.55)" : "rgba(0,102,204,0.60)";
+      ctx.textAlign = "left";
+      ctx.fillText("防御区", xZero + qPadX, yDiv + qPadY);
+
+      // 泡沫区 — bottom-left
+      ctx.fillStyle = dark ? "rgba(255,107,126,0.55)" : "rgba(220,50,60,0.60)";
+      ctx.textAlign = "right";
+      ctx.fillText("泡沫区", xZero - qPadX, yDiv + qPadY);
+
+      ctx.textBaseline = "alphabetic";
+      ctx.textAlign    = "left";
+
+      // — dots —
+      dotPositions = [];
+
+      for (let i = 0; i < allStocks.length; i++) {
+        const s  = allStocks[i];
+        const px = mapX(s.change_percent, W);
+        const py = mapY(s.turnover_rate,  H);
+
+        const r = 2 + Math.min(3, Math.log10(s.amount / 1e7 + 1) * 1.5);
+
+        dotPositions.push({ px, py, i });
+
+        const isHovered = (i === hoveredIdx);
+        let   col;
+
+        if (isHovered) {
+          col = s.change_percent >= 0 ? "#60ffcc" : "#ff9baa";
+        } else {
+          col = s.change_percent >= 0 ? "#2ed09a" : "#ff6b7e";
+        }
+
+        ctx.globalAlpha = isHovered ? 1.0 : 0.75;
+        ctx.fillStyle   = col;
+
+        if (isHovered) {
+          // glow ring
+          const grd = ctx.createRadialGradient(px, py, r - 0.5, px, py, r + 5);
+          grd.addColorStop(0, col.replace(")", ",0.3)").replace("rgb", "rgba"));
+          grd.addColorStop(1, "rgba(0,0,0,0)");
+          ctx.fillStyle = grd;
+          ctx.beginPath(); ctx.arc(px, py, r + 5, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = col;
+        }
+
+        ctx.beginPath();
+        ctx.arc(px, py, isHovered ? r + 1 : r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.globalAlpha = 1;
+    }
+
+    // ── Tooltip helpers ───────────────────────────────────────────────────────
+
+    function showTooltip(stock, canvasPx, canvasPy) {
+      const chg = stock.change_percent;
+      document.getElementById("ttCode").textContent  = stock.code;
+      document.getElementById("ttName").textContent  = stock.name;
+      const ttChgEl = document.getElementById("ttChg");
+      ttChgEl.textContent = chgText(chg);
+      ttChgEl.className   = "tt-val " + (chg >= 0 ? "up" : "down");
+      document.getElementById("ttTurn").textContent  = (stock.turnover_rate || 0).toFixed(2) + "%";
+      document.getElementById("ttVol").textContent   = (stock.vol_ratio     || 0).toFixed(2);
+      document.getElementById("ttAmt").textContent   = fmtAmt(stock.amount);
+
+      const rect = canvasArea.getBoundingClientRect();
+      const TW   = 185, TH = 148;
+      let   left = canvasPx + 14;
+      let   top  = canvasPy - 20;
+
+      if (left + TW > rect.width  - 4) left = canvasPx - TW - 10;
+      if (top  + TH > rect.height - 4) top  = rect.height - TH - 4;
+      if (top  < 4)                     top  = 4;
+
+      tooltip.style.left    = left + "px";
+      tooltip.style.top     = top  + "px";
+      tooltip.style.display = "block";
+    }
+
+    function hideTooltip() {
+      tooltip.style.display = "none";
+    }
+
+    // ── Mouse interaction ─────────────────────────────────────────────────────
+
+    canvas.addEventListener("mousemove", (e) => {
+      if (!allStocks.length) return;
+      const rect = canvas.getBoundingClientRect();
+      const mx   = e.clientX - rect.left;
+      const my   = e.clientY - rect.top;
+
+      const RADIUS = 12;
+      let   best   = -1;
+      let   bestD  = Infinity;
+
+      for (const { px, py, i } of dotPositions) {
+        const dx = px - mx, dy = py - my;
+        const d  = dx * dx + dy * dy;
+        if (d < bestD && d <= RADIUS * RADIUS) { bestD = d; best = i; }
+      }
+
+      if (best !== hoveredIdx) {
+        hoveredIdx = best;
+        if (animFrame) cancelAnimationFrame(animFrame);
+        animFrame = requestAnimationFrame(renderChart);
+      }
+
+      if (best >= 0) {
+        canvas.style.cursor = "pointer";
+        showTooltip(allStocks[best], dotPositions[best].px, dotPositions[best].py);
+      } else {
+        canvas.style.cursor = "crosshair";
+        hideTooltip();
+      }
+    });
+
+    canvas.addEventListener("mouseleave", () => {
+      if (hoveredIdx !== -1) {
+        hoveredIdx = -1;
+        if (animFrame) cancelAnimationFrame(animFrame);
+        animFrame = requestAnimationFrame(renderChart);
+      }
+      hideTooltip();
+    });
+
+    canvas.addEventListener("click", (e) => {
+      if (hoveredIdx >= 0) {
+        const code = allStocks[hoveredIdx].code;
+        window.location.href = `workspace.html?code=${code}`;
+      }
+    });
+
+    // ── Theme change observer ─────────────────────────────────────────────────
+
+    // Re-render when theme toggles so canvas colours update
+    const themeObserver = new MutationObserver(() => {
+      if (allStocks.length) {
+        if (animFrame) cancelAnimationFrame(animFrame);
+        animFrame = requestAnimationFrame(renderChart);
+      }
+    });
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+    // ── Resize observer ───────────────────────────────────────────────────────
+
+    const ro = new ResizeObserver(() => {
+      resizeCanvas();
+    });
+    ro.observe(canvasArea);
+
+    // ── Load & bootstrap ──────────────────────────────────────────────────────
+
+    async function startLoad() {
+      allStocks      = [];
+      dotPositions   = [];
+      hoveredIdx     = -1;
+
+      // Reset UI
+      loadProgress.style.width   = "0%";
+      overlayTitle.textContent   = "正在加载全市场数据…";
+      overlaySub.innerHTML       = "并发拉取 12 页 × 500 只<br>首次约需 5 ~ 15 秒";
+      loadingOverlay.classList.remove("hidden");
+      errorOverlay.classList.remove("visible");
+      btnReload.disabled = true;
+
+      // Reset stats
+      statTotal.innerHTML     = "—<small>只</small>";
+      statUp.textContent      = "↑ —";
+      statDown.textContent    = "↓ —";
+      cntOpp.textContent      = "—";
+      cntCrowd.textContent    = "—";
+      cntDef.textContent      = "—";
+      cntBubble.textContent   = "—";
+      barOpp.style.width      = "0%";
+      barCrowd.style.width    = "0%";
+      barDef.style.width      = "0%";
+      barBubble.style.width   = "0%";
+
+      try {
+        const stocks = await fetchAllStocks();
+
+        if (!stocks.length) throw new Error("返回数据为空，可能 API 暂时不可用");
+
+        allStocks = stocks;
+        updateStats(stocks);
+        resizeCanvas();    // triggers renderChart
+        loadingOverlay.classList.add("hidden");
+        document.getElementById("sidebarFooter").innerHTML =
+          `数据来源：东方财富&nbsp;·&nbsp;已加载 ${stocks.length} 只<br>` +
+          `X轴：涨跌幅 (−10 ~ +10%)&nbsp;&nbsp;Y轴：换手率 (0 ~ 15%)<br>` +
+          `分界线：Y = 3% (近似中位换手)`;
+
+      } catch (err) {
+        loadingOverlay.classList.add("hidden");
+        errorOverlay.classList.add("visible");
+        errorMsg.textContent = err.message || "网络错误，请稍后重试";
+      } finally {
+        btnReload.disabled = false;
+      }
+    }
+
+    // Kick off on page load
+    window.addEventListener("DOMContentLoaded", () => {
+      resizeCanvas();
+      startLoad();
+    });
+
+    </script>
+  </body>
+</html>

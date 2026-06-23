@@ -157,33 +157,23 @@ const ALL_STOCK_FS = [
 const STOCK_FIELDS = "f2,f3,f6,f8,f10,f11,f12,f14";
 
 async function fetchAllStocks() {
-  // Retry backend up to 3 times — market cache warms in ~20s after server restart.
-  // If the server just restarted and /market/stocks returns [] (cache still building),
-  // we wait and retry rather than falling to EastMoney (which may CORS-block on GH Pages).
-  for (let attempt = 0; attempt < 3; attempt++) {
-    if (attempt > 0) {
-      if (matrixLoadingEl) {
-        matrixLoadingEl.innerHTML = `<div>市场缓存预热中，稍后自动重试（${attempt}/2）…<div style="margin-top:6px;font-size:0.72rem;color:var(--muted-2)">服务器已启动，数据约需 20-30 秒完成加载</div></div>`;
-      }
-      await new Promise(r => setTimeout(r, 20000));
+  // Single quick backend check — only use if cache is full (1000+ stocks).
+  try {
+    const res = await fetch(`${getApiBase()}/market/stocks`, {
+      signal: AbortSignal.timeout(8000),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.stocks) && data.stocks.length > 1000) return data.stocks;
     }
-    try {
-      const res = await fetch(`${getApiBase()}/market/stocks`, {
-        signal: AbortSignal.timeout(25000),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data.stocks) && data.stocks.length > 10) return data.stocks;
-      }
-    } catch { /* timeout or network, retry */ }
-  }
+  } catch { /* server cold or unreachable */ }
 
-  // Backend gave empty 3× — try EastMoney direct as last resort
+  // Backend incomplete or unavailable — fetch directly from EastMoney
   if (matrixLoadingEl) {
-    matrixLoadingEl.innerHTML = `<div>正在从备用数据源加载…</div>`;
+    matrixLoadingEl.innerHTML = `<div>正在从东方财富直接加载全市场数据…</div>`;
   }
   const PAGE_SIZE = 500;
-  const PAGES = 9;
+  const PAGES = 12;
   const pages = await Promise.all(
     Array.from({ length: PAGES }, (_, i) =>
       emGet({ pn: String(i + 1), pz: String(PAGE_SIZE), po: "1", fid: "f3", fs: ALL_STOCK_FS, fields: STOCK_FIELDS })
@@ -429,8 +419,9 @@ async function clearServerHistory() {
   } catch {}
 }
 
-// ── Portfolio ─────────────────────────────────────────────────────────────────
+// ── Portfolio (localStorage — no login required) ──────────────────────────────
 
+const PORTFOLIO_LS_KEY = "summermax-portfolio";
 let portfolioPositions = [];
 
 const portfolioListEl = document.getElementById("portfolioList");
@@ -442,40 +433,39 @@ const posSharesEl = document.getElementById("posShares");
 const posSubmitBtnEl = document.getElementById("posSubmitBtn");
 const posCancelBtnEl = document.getElementById("posCancelBtn");
 
-async function loadPortfolio() {
-  if (!isLoggedIn) {
-    portfolioListEl.innerHTML = `<div class="pos-empty">请先登录后使用持仓跟踪功能</div>`;
-    return;
-  }
-  try {
-    const res = await fetch(`${getApiBase()}/user/portfolio`, { headers: getAuthHeaders() });
-    if (!res.ok) return;
-    const data = await res.json();
-    portfolioPositions = data.positions || [];
-    renderPortfolio();
-    if (portfolioPositions.length > 0) refreshPortfolioPrices();
-  } catch {}
+function readPortfolioLS() {
+  try { return JSON.parse(localStorage.getItem(PORTFOLIO_LS_KEY) || "[]"); }
+  catch { return []; }
 }
 
-async function addPortfolioPosition(code, name, buyPrice, shares) {
-  try {
-    const res = await fetch(`${getApiBase()}/user/portfolio`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-      body: JSON.stringify({ code, name, buy_price: buyPrice, shares }),
-    });
-    return res.ok;
-  } catch { return false; }
+function writePortfolioLS(positions) {
+  localStorage.setItem(PORTFOLIO_LS_KEY, JSON.stringify(positions));
 }
 
-async function deletePortfolioPosition(id) {
-  try {
-    const res = await fetch(`${getApiBase()}/user/portfolio/${id}`, {
-      method: "DELETE",
-      headers: getAuthHeaders(),
-    });
-    return res.ok;
-  } catch { return false; }
+function loadPortfolio() {
+  portfolioPositions = readPortfolioLS();
+  renderPortfolio();
+  if (portfolioPositions.length > 0) refreshPortfolioPrices();
+}
+
+function addPortfolioPosition(code, name, buyPrice, shares) {
+  const positions = readPortfolioLS();
+  positions.push({
+    id: Date.now(),
+    code,
+    name,
+    buy_price: buyPrice,
+    shares,
+    buy_date: new Date().toISOString().slice(0, 10),
+  });
+  writePortfolioLS(positions);
+  return true;
+}
+
+function deletePortfolioPosition(id) {
+  const positions = readPortfolioLS().filter((p) => p.id !== id);
+  writePortfolioLS(positions);
+  return true;
 }
 
 function renderPortfolio() {
@@ -517,45 +507,50 @@ function renderPortfolio() {
   portfolioListEl.appendChild(frag);
 
   portfolioListEl.querySelectorAll(".pos-delete").forEach((btn) => {
-    btn.addEventListener("click", async () => {
+    btn.addEventListener("click", () => {
       const id = Number(btn.dataset.id);
-      btn.disabled = true;
-      btn.textContent = "…";
-      const ok = await deletePortfolioPosition(id);
-      if (ok) {
-        portfolioPositions = portfolioPositions.filter((p) => p.id !== id);
-        renderPortfolio();
-      } else {
-        btn.disabled = false;
-        btn.textContent = "删除";
-      }
+      deletePortfolioPosition(id);
+      portfolioPositions = readPortfolioLS();
+      renderPortfolio();
     });
   });
 }
 
 async function refreshPortfolioPrices() {
+  const codes = portfolioPositions.filter((p) => !p._current_price || p._current_price <= 0).map((p) => p.code);
+  if (!codes.length) { renderPortfolio(); return; }
+
+  // First pass: hit allStocks cache (already loaded from EM)
+  const missing = [];
   for (const pos of portfolioPositions) {
-    // First try from already-loaded allStocks (free, instant)
     const cached = allStocks.find((s) => s.code === pos.code);
     if (cached && cached.price > 0) {
       pos._current_price = cached.price;
-      continue;
+    } else {
+      missing.push(pos);
     }
-    // Fallback: backend stock endpoint
+  }
+
+  // Second pass: batch fetch missing prices direct from EastMoney
+  if (missing.length) {
     try {
-      const res = await fetch(`${getApiBase()}/stock?code=${pos.code}`);
-      if (res.ok) {
-        const d = await res.json();
-        const price = d?.realtime?.price;
-        if (price && price > 0) pos._current_price = price;
-      }
+      const secids = missing.map((p) => `${/^[69]/.test(p.code) ? "1" : "0"}.${p.code}`).join(",");
+      const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?secids=${secids}&fields=f2,f12&fltt=2&invt=2&ut=bd1d9ddb04089700cf9c27f6f7426281`;
+      const res = await fetch(url, { headers: { "Referer": "https://quote.eastmoney.com/" }, signal: AbortSignal.timeout(8000) });
+      const data = await res.json();
+      const diff = (data.data || {}).diff || [];
+      diff.forEach((item) => {
+        const code = String(item.f12 || "").padStart(6, "0");
+        const pos = missing.find((p) => p.code === code);
+        if (pos && item.f2 > 0) pos._current_price = Number(item.f2);
+      });
     } catch {}
   }
+
   renderPortfolio();
 }
 
 addPosBtnEl?.addEventListener("click", () => {
-  if (!isLoggedIn) { window.location.href = "auth.html"; return; }
   const isOpen = addPosFormEl.style.display !== "none";
   addPosFormEl.style.display = isOpen ? "none" : "";
   if (!isOpen) posCodeEl?.focus();
@@ -579,28 +574,25 @@ posSubmitBtnEl?.addEventListener("click", async () => {
   posSubmitBtnEl.disabled = true;
   posSubmitBtnEl.textContent = "添加中…";
 
-  // Try to get stock name from allStocks first, then backend
+  // Try to get stock name from allStocks cache first, then EM API
   let name = allStocks.find((s) => s.code === code)?.name || "";
   if (!name) {
     try {
-      const res = await fetch(`${getApiBase()}/stock?code=${code}`);
-      if (res.ok) {
-        const d = await res.json();
-        name = d?.realtime?.name || code;
-      } else { name = code; }
+      const secid = `/^[69]/.test(code)` ? `1.${code}` : `0.${code}`;
+      const url = `https://push2.eastmoney.com/api/qt/stock/get?secid=${/^[69]/.test(code) ? 1 : 0}.${code}&fields=f58&fltt=2&ut=bd1d9ddb04089700cf9c27f6f7426281`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+      const d = await res.json();
+      name = d?.data?.f58 || code;
     } catch { name = code; }
   }
 
-  const ok = await addPortfolioPosition(code, name, buyPrice, shares);
-  if (ok) {
-    if (posCodeEl) posCodeEl.value = "";
-    if (posBuyPriceEl) posBuyPriceEl.value = "";
-    if (posSharesEl) posSharesEl.value = "";
-    addPosFormEl.style.display = "none";
-    await loadPortfolio();
-  } else {
-    alert("添加失败，请重试");
-  }
+  addPortfolioPosition(code, name, buyPrice, shares);
+  if (posCodeEl) posCodeEl.value = "";
+  if (posBuyPriceEl) posBuyPriceEl.value = "";
+  if (posSharesEl) posSharesEl.value = "";
+  addPosFormEl.style.display = "none";
+  loadPortfolio();
+
   posSubmitBtnEl.disabled = false;
   posSubmitBtnEl.textContent = "确认添加";
 });

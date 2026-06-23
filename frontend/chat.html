@@ -3,7 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <title>SummerMax Alpha · AI 分析师</title>
+    <link rel="stylesheet" href="/app/theme.css?v=20260623-nav1" />
     <style>
       :root {
         --bg: #07111f;
@@ -602,14 +606,16 @@
       <span class="brand-name">SummerMax Alpha</span>
       <div class="topbar-divider"></div>
       <nav class="page-nav">
-        <a href="index.html">首页</a>
-        <a href="scan.html">市场扫描</a>
-        <a href="workspace.html">工作台</a>
-        <a href="chat.html" class="active">AI 分析师</a>
-        <a href="settings.html">设置</a>
+        <a href="/home">首页</a>
+        <a href="/scan">市场扫描</a>
+        <a href="/workspace">工作台</a>
+        <a href="/chat" class="active">AI 分析师</a>
+        <a href="/tools">工具箱</a>
+        <a href="/settings">设置</a>
       </nav>
       <div class="topbar-spacer"></div>
       <div class="user-badge" id="userBadge"></div>
+      <button class="theme-toggle" onclick="__toggleTheme()" title="切换浅色模式">☀</button>
       <button class="clear-btn" id="clearBtn">清空对话</button>
     </header>
 
@@ -723,6 +729,7 @@
 
     </div>
 
-    <script src="chat.js"></script>
+    <script src="/app/theme.js?v=20260623-nav1"></script>
+    <script src="/app/chat.js?v=20260623-nav1"></script>
   </body>
 </html>

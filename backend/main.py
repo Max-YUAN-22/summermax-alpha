@@ -47,7 +47,7 @@ load_local_env()
 
 
 APP_NAME = "SummerMax Quant Alpha API"
-APP_VERSION = "0.2.1"
+APP_VERSION = "0.2.2"
 DEFAULT_LLM_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.5")
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BACKEND_DIR)
@@ -57,6 +57,34 @@ NO_CACHE_HEADERS = {
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
     "Pragma": "no-cache",
     "Expires": "0",
+}
+FRONTEND_ROUTE_MAP = {
+    "/": "index.html",
+    "/home": "index.html",
+    "/home.html": "index.html",
+    "/index.html": "index.html",
+    "/workspace": "workspace.html",
+    "/workspace.html": "workspace.html",
+    "/scan": "scan.html",
+    "/scan.html": "scan.html",
+    "/chat": "chat.html",
+    "/chat.html": "chat.html",
+    "/tools": "tools.html",
+    "/tools.html": "tools.html",
+    "/picker": "picker.html",
+    "/picker.html": "picker.html",
+    "/quadrant": "quadrant.html",
+    "/quadrant.html": "quadrant.html",
+    "/backtest": "backtest.html",
+    "/backtest.html": "backtest.html",
+    "/settings": "settings.html",
+    "/settings.html": "settings.html",
+    "/auth": "auth.html",
+    "/auth.html": "auth.html",
+    "/stock": "stock.html",
+    "/stock.html": "stock.html",
+    "/debug": "debug.html",
+    "/debug.html": "debug.html",
 }
 
 # ── Auth constants ────────────────────────────────────────────────────────────
@@ -284,7 +312,7 @@ init_db()
 async def disable_frontend_caching(request: Request, call_next):
     response = await call_next(request)
     path = request.url.path
-    if path in {"/", "/workspace", "/debug", "/scan"} or path.startswith("/app/"):
+    if path in FRONTEND_ROUTE_MAP or path.startswith("/app/") or path.endswith(".html"):
         for key, value in NO_CACHE_HEADERS.items():
             response.headers[key] = value
     return response
@@ -2215,36 +2243,27 @@ def health() -> Dict[str, Any]:
     }
 
 
-@app.get("/")
-def frontend_index() -> FileResponse:
-    home_path = os.path.join(FRONTEND_DIR, "home.html")
-    if not os.path.exists(home_path):
-        raise HTTPException(status_code=404, detail="Frontend home.html not found.")
-    return FileResponse(home_path, headers=NO_CACHE_HEADERS)
+def serve_frontend_file(filename: str) -> FileResponse:
+    file_path = os.path.join(FRONTEND_DIR, filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail=f"Frontend {filename} not found.")
+    return FileResponse(file_path, headers=NO_CACHE_HEADERS)
 
 
-@app.get("/workspace")
-def frontend_workspace() -> FileResponse:
-    index_path = os.path.join(FRONTEND_DIR, "index.html")
-    if not os.path.exists(index_path):
-        raise HTTPException(status_code=404, detail="Frontend index.html not found.")
-    return FileResponse(index_path, headers=NO_CACHE_HEADERS)
+def _make_frontend_handler(filename: str):
+    def _handler() -> FileResponse:
+        return serve_frontend_file(filename)
+
+    return _handler
 
 
-@app.get("/debug")
-def frontend_debug() -> FileResponse:
-    debug_path = os.path.join(FRONTEND_DIR, "debug.html")
-    if not os.path.exists(debug_path):
-        raise HTTPException(status_code=404, detail="Frontend debug.html not found.")
-    return FileResponse(debug_path, headers=NO_CACHE_HEADERS)
-
-
-@app.get("/scan")
-def frontend_scan() -> FileResponse:
-    scan_path = os.path.join(FRONTEND_DIR, "scan.html")
-    if not os.path.exists(scan_path):
-        raise HTTPException(status_code=404, detail="Frontend scan.html not found.")
-    return FileResponse(scan_path, headers=NO_CACHE_HEADERS)
+for _route_path, _filename in FRONTEND_ROUTE_MAP.items():
+    app.add_api_route(
+        _route_path,
+        _make_frontend_handler(_filename),
+        methods=["GET"],
+        include_in_schema=False,
+    )
 
 
 @app.get("/quote/realtime")

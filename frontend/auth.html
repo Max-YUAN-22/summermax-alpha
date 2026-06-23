@@ -343,7 +343,7 @@
           localStorage.setItem("summermax-email", data.email);
           localStorage.setItem("summermax-role", data.role);
           setStatus(loginStatus, data.message || "登录成功", "ok");
-          setTimeout(() => { window.location.href = "chat.html"; }, 600);
+          setTimeout(() => { window.location.href = "/chat"; }, 600);
         } catch {
           setStatus(loginStatus, "网络错误，请检查连接", "err");
         } finally {
@@ -447,7 +447,7 @@
           localStorage.setItem("summermax-email", data.email);
           localStorage.setItem("summermax-role", data.role);
           setStatus(registerStatus, data.message || "注册成功！", "ok");
-          setTimeout(() => { window.location.href = "chat.html"; }, 800);
+          setTimeout(() => { window.location.href = "/chat"; }, 800);
         } catch {
           setStatus(registerStatus, "网络错误，请重试", "err");
         } finally {
@@ -471,7 +471,7 @@
         fetch(`${getApiBase()}/auth/me`, {
           headers: { "Authorization": `Bearer ${token}` },
         }).then((r) => {
-          if (r.ok) window.location.href = "chat.html";
+          if (r.ok) window.location.href = "/chat";
         }).catch(() => {});
       }
     </script>

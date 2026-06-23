@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SummerMax Alpha</title>
+    <link rel="stylesheet" href="/app/theme.css?v=20260623-nav1" />
     <style>
       :root {
         --bg: #07111f;
@@ -838,12 +839,14 @@
       <span class="brand-name">SummerMax Alpha</span>
       <div class="topbar-divider"></div>
       <nav class="page-nav">
-        <a href="index.html" data-i18n="navHome">首页</a>
-        <a href="scan.html" data-i18n="navScan">市场扫描</a>
-        <a href="workspace.html" class="active" data-i18n="navWorkspace">工作台</a>
-        <a href="chat.html">AI 分析师</a>
-        <a href="settings.html">设置</a>
+        <a href="/home" data-i18n="navHome">首页</a>
+        <a href="/scan" data-i18n="navScan">市场扫描</a>
+        <a href="/workspace" class="active" data-i18n="navWorkspace">工作台</a>
+        <a href="/chat">AI 分析师</a>
+        <a href="/tools">工具箱</a>
+        <a href="/settings">设置</a>
       </nav>
+      <div class="gpt-indicator">
         <div id="gptStatusDot" class="gpt-dot"></div>
         <span id="gptStatusLabel" data-i18n="gptStatusChecking">GPT 检测中…</span>
       </div>
@@ -851,6 +854,7 @@
         <button id="langZh" class="active" type="button">中</button>
         <button id="langEn" type="button">EN</button>
       </div>
+      <button class="theme-toggle" onclick="__toggleTheme()" title="切换浅色模式">☀</button>
     </header>
 
     <!-- ═══════════ THREE COLUMNS ═══════════ -->
@@ -892,7 +896,7 @@
               <input id="useLlm" type="checkbox" checked />
             </div>
             <div style="margin-top:6px">
-              <a href="debug.html" style="font-size:0.72rem;color:var(--muted-2);text-decoration:none" data-i18n="openDebugBtn">查看原始数据 →</a>
+              <a href="/debug" style="font-size:0.72rem;color:var(--muted-2);text-decoration:none" data-i18n="openDebugBtn">查看原始数据 →</a>
             </div>
           </details>
         </div>
@@ -1044,6 +1048,7 @@
 
     </div>
 
-    <script src="app.js"></script>
+    <script src="/app/theme.js?v=20260623-nav1"></script>
+    <script src="/app/app.js?v=20260623-nav1"></script>
   </body>
 </html>

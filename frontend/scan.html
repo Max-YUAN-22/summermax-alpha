@@ -3,354 +3,391 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <title>SummerMax Alpha · 市场扫描</title>
+    <link rel="stylesheet" href="/app/theme.css?v=20260623-nav1" />
     <style>
       :root {
         --bg: #07111f;
-        --panel: rgba(10, 22, 38, 0.9);
-        --line: rgba(132, 157, 189, 0.15);
+        --line: rgba(132, 157, 189, 0.12);
+        --line-strong: rgba(132, 157, 189, 0.22);
         --text: #edf4ff;
         --muted: #8ea3bd;
         --muted-2: #5a7490;
         --accent: #66d1ff;
+        --accent-dim: rgba(102, 209, 255, 0.10);
+        --accent-border: rgba(102, 209, 255, 0.20);
         --bull: #2ed09a;
         --bear: #ff6b7e;
-        --shadow: 0 20px 50px rgba(0, 0, 0, 0.32);
       }
 
       * { box-sizing: border-box; margin: 0; padding: 0; }
 
       html, body {
-        min-height: 100vh;
+        height: 100%;
         color: var(--text);
         font-family: "PingFang SC", "Noto Sans SC", "Avenir Next", sans-serif;
         font-size: 14px;
-        background: #07111f;
+        background: var(--bg);
+        background-image:
+          radial-gradient(ellipse 55% 35% at 15% -5%, rgba(102,209,255,0.08) 0%, transparent 55%),
+          radial-gradient(ellipse 45% 28% at 85% 5%,  rgba(46,208,154,0.05) 0%, transparent 50%);
       }
 
       ::-webkit-scrollbar { width: 4px; height: 4px; }
       ::-webkit-scrollbar-track { background: transparent; }
-      ::-webkit-scrollbar-thumb { background: rgba(102,209,255,0.2); border-radius: 2px; }
+      ::-webkit-scrollbar-thumb { background: rgba(102,209,255,0.18); border-radius: 2px; }
 
-      .up { color: var(--bull); }
+      .up   { color: var(--bull); }
       .down { color: var(--bear); }
 
-      /* ── Topbar ── */
+      /* ══ Topbar ══ */
       .topbar {
-        height: 48px;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 0 16px;
+        height: 52px;
+        display: flex; align-items: center; gap: 12px;
+        padding: 0 20px;
         border-bottom: 1px solid var(--line);
-        background: rgba(6, 15, 28, 0.98);
-        position: sticky;
-        top: 0;
-        z-index: 100;
+        background: rgba(5, 12, 24, 0.92);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        position: sticky; top: 0; z-index: 100;
       }
+
+      .brand { display: flex; align-items: center; gap: 9px; flex-shrink: 0; }
 
       .brand-mark {
-        display: grid;
-        place-items: center;
-        width: 30px;
-        height: 30px;
-        border-radius: 8px;
-        background: linear-gradient(135deg, rgba(102,209,255,0.22), rgba(36,163,135,0.28));
-        border: 1px solid rgba(102,209,255,0.2);
-        font-size: 0.78rem;
-        font-weight: 800;
-        flex-shrink: 0;
+        display: grid; place-items: center;
+        width: 32px; height: 32px; border-radius: 9px;
+        background: linear-gradient(135deg, rgba(102,209,255,0.24), rgba(36,163,135,0.30));
+        border: 1px solid rgba(102,209,255,0.22);
+        font-size: 0.78rem; font-weight: 800; flex-shrink: 0;
       }
 
-      .brand-name {
-        font-size: 0.88rem;
-        font-weight: 700;
-        white-space: nowrap;
+      .brand-name { font-size: 0.9rem; font-weight: 700; }
+
+      .brand-sep { width: 1px; height: 18px; background: var(--line); flex-shrink: 0; }
+
+      .page-title {
+        font-size: 0.84rem; font-weight: 700;
+        background: linear-gradient(90deg, var(--accent) 0%, #2ed09a 100%);
+        -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        background-clip: text;
       }
 
-      .topbar-divider {
-        width: 1px;
-        height: 20px;
-        background: var(--line);
-        flex-shrink: 0;
-      }
+      .topbar-spacer { flex: 1; }
 
       .page-nav { display: flex; gap: 2px; }
-
       .page-nav a {
-        padding: 5px 10px;
-        border-radius: 8px;
-        text-decoration: none;
-        color: var(--muted);
-        font-size: 0.82rem;
-        transition: background 0.15s, color 0.15s;
+        padding: 5px 11px; border-radius: 8px;
+        text-decoration: none; color: var(--muted);
+        font-size: 0.82rem; font-weight: 500;
+        transition: background 0.15s, color 0.15s; white-space: nowrap;
       }
+      .page-nav a:hover  { background: rgba(255,255,255,0.06); color: var(--text); }
+      .page-nav a.active { background: var(--accent-dim); color: var(--accent); font-weight: 700; }
 
-      .page-nav a:hover { background: rgba(255,255,255,0.05); color: var(--text); }
-      .page-nav a.active { background: rgba(102,209,255,0.12); color: var(--accent); font-weight: 700; }
-
-      /* ── Layout ── */
+      /* ══ Shell ══ */
       .shell {
         display: grid;
-        grid-template-columns: 420px 1fr;
-        height: calc(100vh - 48px);
+        grid-template-columns: 440px 1fr;
+        height: calc(100vh - 52px);
         overflow: hidden;
       }
 
-      /* ── Left: sector list ── */
+      /* ══ Left — Sector list ══ */
       .sector-col {
+        display: flex; flex-direction: column;
         border-right: 1px solid var(--line);
-        display: flex;
-        flex-direction: column;
+        background: rgba(5, 12, 23, 0.35);
         overflow: hidden;
       }
 
-      .col-head {
-        padding: 10px 14px;
+      .panel-head {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 10px 16px;
         border-bottom: 1px solid var(--line);
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
+        background: rgba(4, 11, 22, 0.6);
         flex-shrink: 0;
-        background: rgba(5,13,26,0.7);
       }
 
-      .col-head-title {
-        font-size: 0.72rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        color: var(--muted-2);
+      .panel-head-left { display: flex; align-items: center; gap: 8px; }
+
+      .panel-label {
+        font-size: 0.7rem; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted-2);
       }
 
-      .col-head-meta { font-size: 0.72rem; color: var(--muted-2); }
+      .count-badge {
+        padding: 2px 8px; border-radius: 99px;
+        background: var(--accent-dim); border: 1px solid var(--accent-border);
+        font-size: 0.66rem; font-weight: 700; color: var(--accent);
+      }
 
-      .sector-col-head {
+      .panel-hint { font-size: 0.72rem; color: var(--muted-2); }
+
+      .tbl-head {
         display: grid;
-        grid-template-columns: 28px 1fr 70px 70px 90px 1fr 20px;
-        gap: 6px;
-        padding: 6px 14px;
-        font-size: 0.68rem;
-        color: var(--muted-2);
+        grid-template-columns: 26px 1fr 68px 68px 84px 1fr 18px;
+        gap: 5px;
+        padding: 6px 16px;
+        font-size: 0.66rem; color: var(--muted-2);
         border-bottom: 1px solid var(--line);
-        letter-spacing: 0.04em;
-        flex-shrink: 0;
+        letter-spacing: 0.05em; flex-shrink: 0;
+        background: rgba(4, 11, 22, 0.4);
       }
 
-      #sectorList {
-        flex: 1;
-        overflow-y: auto;
-      }
+      #sectorList { flex: 1; overflow-y: auto; }
 
       .sector-row {
         display: grid;
-        grid-template-columns: 28px 1fr 70px 70px 90px 1fr 20px;
-        gap: 6px;
-        align-items: center;
-        padding: 9px 14px;
-        border-bottom: 1px solid rgba(132,157,189,0.07);
-        background: none;
-        border-left: none;
-        border-right: none;
-        border-top: none;
-        color: var(--text);
-        cursor: pointer;
-        text-align: left;
-        font-size: 0.8rem;
-        width: 100%;
-        transition: background 0.1s;
+        grid-template-columns: 26px 1fr 68px 68px 84px 1fr 18px;
+        gap: 5px; align-items: center;
+        padding: 9px 16px;
+        border-bottom: 1px solid rgba(132,157,189,0.052);
+        border-left: 3px solid transparent;
+        background: none; border-right: none; border-top: none;
+        color: var(--text); cursor: pointer;
+        text-align: left; font-size: 0.8rem; width: 100%;
+        transition: background 0.1s, border-left-color 0.15s;
       }
 
-      .sector-row:hover { background: rgba(102,209,255,0.05); }
-      .sector-row.active { background: rgba(102,209,255,0.10); border-left: 2px solid var(--accent); }
+      .sector-row:hover  { background: rgba(102,209,255,0.04); border-left-color: rgba(102,209,255,0.22); }
+      .sector-row.active { background: rgba(102,209,255,0.07); border-left-color: var(--accent); }
 
-      .sr-rank { color: var(--muted-2); font-size: 0.72rem; text-align: center; }
-      .sr-name { font-weight: 600; }
-      .sr-chg { font-weight: 700; text-align: right; }
-      .sr-amount { color: var(--muted); text-align: right; }
-      .sr-counts { font-size: 0.72rem; }
-      .sr-leader { font-size: 0.72rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .sr-arrow { color: var(--muted-2); text-align: center; }
+      .sr-rank   { color: var(--muted-2); font-size: 0.66rem; text-align: center; }
+      .sr-name   { font-weight: 600; font-size: 0.82rem; }
+      .sr-chg    { font-weight: 700; font-size: 0.86rem; text-align: right; }
+      .sr-amount { color: var(--muted); font-size: 0.74rem; text-align: right; }
+      .sr-arrow  { color: var(--muted-2); font-size: 0.85rem; text-align: center; }
 
+      .sr-counts { display: flex; gap: 4px; align-items: center; }
+
+      .cnt-up {
+        color: var(--bull); font-size: 0.68rem; font-weight: 700;
+        padding: 1px 5px; border-radius: 4px;
+        background: rgba(46,208,154,0.10); border: 1px solid rgba(46,208,154,0.16);
+      }
+
+      .cnt-down {
+        color: var(--bear); font-size: 0.68rem; font-weight: 700;
+        padding: 1px 5px; border-radius: 4px;
+        background: rgba(255,107,126,0.10); border: 1px solid rgba(255,107,126,0.16);
+      }
+
+      .sr-leader {
+        font-size: 0.7rem; color: var(--muted);
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+
+      /* Loading */
       #sectorLoading {
-        padding: 20px 14px;
-        color: var(--muted);
-        font-size: 0.8rem;
+        padding: 30px 20px; text-align: center;
+        color: var(--muted); font-size: 0.82rem; line-height: 2;
       }
+
+      .spin {
+        display: inline-block; width: 16px; height: 16px;
+        border: 2px solid rgba(102,209,255,0.14); border-top-color: var(--accent);
+        border-radius: 50%; animation: spin 0.75s linear infinite;
+        vertical-align: middle; margin-right: 6px;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
 
       .empty-note {
-        padding: 20px 14px;
-        color: var(--muted-2);
-        font-size: 0.8rem;
-        line-height: 1.6;
+        padding: 30px 20px; text-align: center;
+        color: var(--muted-2); font-size: 0.82rem; line-height: 1.75;
       }
 
       .btn-retry {
-        margin-top: 12px;
-        padding: 7px 16px;
-        border-radius: 8px;
-        border: 1px solid rgba(102,209,255,0.22);
-        background: rgba(102,209,255,0.08);
-        color: var(--accent);
-        cursor: pointer;
-        font-size: 0.8rem;
-        font-weight: 700;
-        display: block;
+        display: inline-block; margin-top: 14px;
+        padding: 7px 18px; border-radius: 9px;
+        border: 1px solid var(--accent-border); background: var(--accent-dim);
+        color: var(--accent); cursor: pointer;
+        font-size: 0.78rem; font-weight: 700;
+        transition: background 0.14s;
       }
-      .btn-retry:hover { background: rgba(102,209,255,0.14); }
+      .btn-retry:hover { background: rgba(102,209,255,0.18); }
 
-      /* ── Right: stock panel ── */
+      /* ══ Right — Stock panel ══ */
       .stock-col {
-        display: flex;
-        flex-direction: column;
+        display: flex; flex-direction: column;
+        background: rgba(6, 14, 26, 0.25);
         overflow: hidden;
       }
 
-      #stockPanel {
-        display: none;
-        flex-direction: column;
-        height: 100%;
-      }
+      #stockPanel { display: none; flex-direction: column; height: 100%; }
 
-      .stock-col-head {
-        display: grid;
-        grid-template-columns: 1fr 80px 80px 80px 70px 70px;
-        gap: 6px;
-        padding: 7px 16px;
-        font-size: 0.68rem;
-        color: var(--muted-2);
+      .stock-head {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 10px 18px;
         border-bottom: 1px solid var(--line);
-        letter-spacing: 0.04em;
+        background: rgba(4, 11, 22, 0.6);
         flex-shrink: 0;
       }
 
-      #stockTable {
-        flex: 1;
-        overflow-y: auto;
+      .stock-head-title { display: flex; align-items: center; gap: 8px; }
+
+      #stockPanelTitle { font-size: 0.9rem; font-weight: 700; }
+
+      .stock-head-hint { font-size: 0.72rem; color: var(--muted-2); }
+
+      .stock-tbl-head {
+        display: grid;
+        grid-template-columns: 1fr 82px 82px 82px 70px 64px;
+        gap: 5px; padding: 6px 18px;
+        font-size: 0.66rem; color: var(--muted-2);
+        border-bottom: 1px solid var(--line);
+        letter-spacing: 0.05em; flex-shrink: 0;
+        background: rgba(4, 11, 22, 0.4);
       }
+
+      #stockTable { flex: 1; overflow-y: auto; }
 
       .stock-row {
         display: grid;
-        grid-template-columns: 1fr 80px 80px 80px 70px 70px;
-        gap: 6px;
-        align-items: center;
-        padding: 8px 16px;
-        border-bottom: 1px solid rgba(132,157,189,0.07);
+        grid-template-columns: 1fr 82px 82px 82px 70px 64px;
+        gap: 5px; align-items: center;
+        padding: 9px 18px;
+        border-bottom: 1px solid rgba(132,157,189,0.052);
         transition: background 0.1s;
       }
-
       .stock-row:hover { background: rgba(102,209,255,0.04); }
 
       .sr2-id { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-      .sr2-code { font-size: 0.78rem; font-weight: 700; color: var(--accent); }
-      .sr2-name { font-size: 0.72rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .sr2-price { font-size: 0.82rem; font-weight: 600; text-align: right; }
-      .sr2-chg { font-size: 0.82rem; font-weight: 700; text-align: right; }
-      .sr2-amount { font-size: 0.76rem; color: var(--muted); text-align: right; }
-      .sr2-turn { font-size: 0.76rem; color: var(--muted); text-align: right; }
+      .sr2-code { font-size: 0.76rem; font-weight: 700; color: var(--accent); }
+      .sr2-name { font-size: 0.7rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .sr2-price { font-size: 0.84rem; font-weight: 700; text-align: right; }
+      .sr2-chg   { font-size: 0.84rem; font-weight: 700; text-align: right; }
+      .sr2-amount { font-size: 0.74rem; color: var(--muted); text-align: right; }
+      .sr2-turn   { font-size: 0.74rem; color: var(--muted); text-align: right; }
 
       .btn-analyze-stock {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        padding: 4px 10px;
-        border-radius: 8px;
-        background: linear-gradient(135deg, rgba(102,209,255,0.18), rgba(47,140,255,0.14));
-        border: 1px solid rgba(102,209,255,0.2);
-        color: var(--text);
-        text-decoration: none;
-        font-size: 0.74rem;
-        font-weight: 700;
-        transition: background 0.15s;
-        white-space: nowrap;
+        display: inline-flex; align-items: center; justify-content: center;
+        padding: 4px 10px; border-radius: 7px;
+        background: var(--accent-dim); border: 1px solid var(--accent-border);
+        color: var(--accent); text-decoration: none;
+        font-size: 0.72rem; font-weight: 700;
+        transition: background 0.14s; white-space: nowrap;
       }
-
-      .btn-analyze-stock:hover { background: linear-gradient(135deg, rgba(102,209,255,0.3), rgba(47,140,255,0.24)); }
+      .btn-analyze-stock:hover { background: rgba(102,209,255,0.20); }
 
       #stockLoading {
-        padding: 20px 16px;
-        color: var(--muted);
-        font-size: 0.8rem;
-        display: none;
+        padding: 24px 18px; color: var(--muted);
+        font-size: 0.82rem; display: none; text-align: center;
       }
 
-      /* Placeholder when no sector selected */
-      .stock-placeholder {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        height: 100%;
-        gap: 12px;
-        color: var(--muted-2);
+      /* Placeholder */
+      .placeholder {
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        height: 100%; gap: 14px; text-align: center; padding: 40px 24px;
       }
 
-      .stock-placeholder-icon { font-size: 2rem; opacity: 0.4; }
-      .stock-placeholder-text { font-size: 0.86rem; line-height: 1.6; text-align: center; max-width: 240px; }
+      .placeholder-icon {
+        width: 52px; height: 52px; border-radius: 16px;
+        display: grid; place-items: center;
+        background: rgba(102,209,255,0.06); border: 1px solid var(--accent-border);
+        font-size: 1.3rem; color: var(--muted-2);
+      }
 
+      .placeholder-title { font-size: 0.9rem; font-weight: 600; color: var(--muted); }
+      .placeholder-sub { font-size: 0.8rem; color: var(--muted-2); line-height: 1.7; max-width: 220px; }
+
+      /* ══ Responsive ══ */
       @media (max-width: 860px) {
-        .shell { grid-template-columns: 1fr; height: auto; overflow: auto; }
-        .sector-col { height: 60vh; }
-        .stock-col { min-height: 40vh; }
+        html, body { height: auto; overflow: auto; }
+        .shell { grid-template-columns: 1fr; height: auto; overflow: visible; }
+        .sector-col { height: 60vh; border-right: none; border-bottom: 1px solid var(--line); }
+        .stock-col { min-height: 50vh; }
         #stockPanel { display: flex !important; }
+        .page-nav a:not(.active) { display: none; }
+        .brand-name { display: none; }
       }
     </style>
   </head>
   <body>
 
     <header class="topbar">
-      <div class="brand-mark">Sα</div>
-      <span class="brand-name">SummerMax Alpha</span>
-      <div class="topbar-divider"></div>
+      <div class="brand">
+        <div class="brand-mark">Sα</div>
+        <span class="brand-name">SummerMax Alpha</span>
+      </div>
+      <div class="brand-sep"></div>
+      <span class="page-title">市场扫描</span>
+      <div class="topbar-spacer"></div>
       <nav class="page-nav">
-        <a href="index.html">首页</a>
-        <a href="scan.html" class="active">市场扫描</a>
-        <a href="workspace.html">工作台</a>
-        <a href="chat.html">AI 分析师</a>
-        <a href="settings.html">设置</a>
+        <a href="/home">首页</a>
+        <a href="/scan" class="active">市场扫描</a>
+        <a href="/workspace">工作台</a>
+        <a href="/chat">AI 分析师</a>
+        <a href="/tools">工具箱</a>
+        <a href="/settings">设置</a>
       </nav>
+      <button class="theme-toggle" onclick="__toggleTheme()" title="切换浅色模式">☀</button>
     </header>
 
     <div class="shell">
 
-      <!-- Left: sector list -->
+      <!-- ── Left: sector list ── -->
       <div class="sector-col">
-        <div class="col-head">
-          <span class="col-head-title">行业板块</span>
-          <span class="col-head-meta">点击板块查看个股 →</span>
+        <div class="panel-head">
+          <div class="panel-head-left">
+            <span class="panel-label">行业板块</span>
+            <span class="count-badge" id="sectorCountBadge">加载中…</span>
+          </div>
+          <span class="panel-hint">点击板块查看个股 →</span>
         </div>
-        <div class="sector-col-head">
+        <div class="tbl-head">
           <span>#</span>
           <span>板块名称</span>
           <span style="text-align:right">涨跌幅</span>
           <span style="text-align:right">成交额</span>
-          <span>涨↑ / 跌↓</span>
+          <span>涨 / 跌</span>
           <span>领涨股</span>
           <span></span>
         </div>
-        <div id="sectorLoading"><p>正在加载板块数据…</p><p style="margin-top:6px;font-size:0.74rem;color:var(--muted-2)">后端首次访问约需 30 秒唤醒，请耐心等待</p></div>
+        <div id="sectorLoading">
+          <span class="spin"></span>正在加载板块数据…
+          <div style="margin-top:6px;font-size:0.74rem;color:var(--muted-2)">服务器首次访问约需 30 秒唤醒</div>
+        </div>
         <div id="sectorList"></div>
       </div>
 
-      <!-- Right: stock list for selected sector -->
+      <!-- ── Right: stock list for selected sector ── -->
       <div class="stock-col">
+
         <div id="stockPanel">
-          <div class="col-head">
-            <span class="col-head-title" id="stockPanelTitle">--</span>
-            <span class="col-head-meta">点击"分析"进入工作台</span>
+          <div class="stock-head">
+            <div class="stock-head-title">
+              <span id="stockPanelTitle">--</span>
+            </div>
+            <span class="stock-head-hint">点击「分析」进入工作台</span>
           </div>
-          <div id="stockLoading">加载中…</div>
+          <div class="stock-tbl-head">
+            <span>代码 / 名称</span>
+            <span style="text-align:right">现价</span>
+            <span style="text-align:right">涨跌幅</span>
+            <span style="text-align:right">成交额</span>
+            <span style="text-align:right">换手率</span>
+            <span></span>
+          </div>
+          <div id="stockLoading"><span class="spin"></span> 加载中…</div>
           <div id="stockTable"></div>
         </div>
 
-        <div class="stock-placeholder" id="stockPlaceholder">
-          <div class="stock-placeholder-icon">←</div>
-          <p class="stock-placeholder-text">选择左侧任意板块<br>即可查看该板块所有个股</p>
+        <div class="placeholder" id="stockPlaceholder">
+          <div class="placeholder-icon">⟵</div>
+          <p class="placeholder-title">选择板块</p>
+          <p class="placeholder-sub">点击左侧任意行业板块，即可查看该板块所有个股行情</p>
         </div>
+
       </div>
 
     </div>
 
-    <script src="scan.js"></script>
+    <script src="/app/theme.js?v=20260623-nav1"></script>
+    <script src="/app/scan.js?v=20260623-nav1"></script>
   </body>
 </html>

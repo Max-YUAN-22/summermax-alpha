@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SummerMax Alpha · A股智能分析平台</title>
+    <link rel="stylesheet" href="/app/theme.css?v=20260623-nav1" />
     <style>
       :root {
         --bg: #07111f;
@@ -676,13 +677,16 @@
       </div>
       <div class="topbar-spacer"></div>
       <nav class="page-nav">
-        <a href="index.html" class="active">首页</a>
-        <a href="scan.html">市场扫描</a>
-        <a href="chat.html">AI 分析师</a>
-        <a href="settings.html">设置</a>
-        <a href="auth.html" class="nav-auth-btn" id="topbarAuthLink">登录</a>
-        <a href="workspace.html" class="nav-cta">进入工作台 →</a>
+        <a href="/home" class="active">首页</a>
+        <a href="/scan">市场扫描</a>
+        <a href="/workspace">工作台</a>
+        <a href="/chat">AI 分析师</a>
+        <a href="/tools">工具箱</a>
+        <a href="/settings">设置</a>
+        <a href="/auth" class="nav-auth-btn" id="topbarAuthLink">登录</a>
+        <a href="/workspace" class="nav-cta">进入工作台 →</a>
       </nav>
+      <button class="theme-toggle" onclick="__toggleTheme()" title="切换浅色模式">☀</button>
     </header>
 
     <!-- ══════ MARKET BAR ══════ -->
@@ -720,8 +724,8 @@
             </div>
           </div>
           <div class="hero-actions">
-            <a href="workspace.html" class="btn-primary">进入分析工作台 →</a>
-            <a href="chat.html" class="btn-secondary">问 AI 推荐今日好股</a>
+            <a href="/workspace" class="btn-primary">进入分析工作台 →</a>
+            <a href="/chat" class="btn-secondary">问 AI 推荐今日好股</a>
           </div>
         </div>
 
@@ -741,7 +745,7 @@
           <div class="data-card">
             <div class="card-hd">
               <span class="card-hd-title">今日强势板块</span>
-              <a href="scan.html" class="card-hd-link">查看全部 →</a>
+              <a href="/scan" class="card-hd-link">查看全部 →</a>
             </div>
             <div id="homeSectors">
               <div class="skeleton" style="width:110px;height:26px;border-radius:999px"></div>
@@ -761,7 +765,7 @@
         </div>
         <div class="scenarios-grid">
 
-          <a href="chat.html" class="scenario-card" data-q="现在是尾盘时段，给我3只今日可以尾盘买入、明天大概率涨的票，每只给出买入区间、T+1目标价和止损价位">
+          <a href="/chat" class="scenario-card" data-q="现在是尾盘时段，给我3只今日可以尾盘买入、明天大概率涨的票，每只给出买入区间、T+1目标价和止损价位">
             <div class="scenario-icon-wrap" style="background:rgba(102,209,255,0.1);border:1px solid rgba(102,209,255,0.18)">⚡</div>
             <div class="scenario-tag tag-ai">AI 推荐</div>
             <div class="scenario-title">今日尾盘买入精选</div>
@@ -769,7 +773,7 @@
             <span class="scenario-arrow">立即筛选 →</span>
           </a>
 
-          <a href="scan.html" class="scenario-card">
+          <a href="/scan" class="scenario-card">
             <div class="scenario-icon-wrap" style="background:rgba(46,208,154,0.1);border:1px solid rgba(46,208,154,0.2)">🏭</div>
             <div class="scenario-tag tag-data">板块扫描</div>
             <div class="scenario-title">选强势板块入场</div>
@@ -777,7 +781,7 @@
             <span class="scenario-arrow">看今日板块 →</span>
           </a>
 
-          <a href="workspace.html" class="scenario-card">
+          <a href="/workspace" class="scenario-card">
             <div class="scenario-icon-wrap" style="background:rgba(102,209,255,0.08);border:1px solid rgba(102,209,255,0.14)">📊</div>
             <div class="scenario-tag tag-data">深度分析</div>
             <div class="scenario-title">分析特定一只股票</div>
@@ -785,7 +789,7 @@
             <span class="scenario-arrow">进入工作台 →</span>
           </a>
 
-          <a href="chat.html" class="scenario-card" data-q="根据苏紫叶理论，今日A股里短中线大概率大涨、位置不高、逻辑硬有产业支撑的是哪几只？每只给买入区间、T+2目标价和止损位">
+          <a href="/chat" class="scenario-card" data-q="根据苏紫叶理论，今日A股里短中线大概率大涨、位置不高、逻辑硬有产业支撑的是哪几只？每只给买入区间、T+2目标价和止损位">
             <div class="scenario-icon-wrap" style="background:rgba(243,177,75,0.1);border:1px solid rgba(243,177,75,0.18)">🚀</div>
             <div class="scenario-tag tag-hot">黑马挖掘</div>
             <div class="scenario-title">挖今日潜力暴涨黑马</div>
@@ -793,7 +797,7 @@
             <span class="scenario-arrow">AI 来选股 →</span>
           </a>
 
-          <a href="chat.html" class="scenario-card" data-q="今天大盘整体走势、上涨下跌比例、主力资金方向，今天适合进攻还是防守？该买什么类型的票？">
+          <a href="/chat" class="scenario-card" data-q="今天大盘整体走势、上涨下跌比例、主力资金方向，今天适合进攻还是防守？该买什么类型的票？">
             <div class="scenario-icon-wrap" style="background:rgba(36,163,135,0.1);border:1px solid rgba(36,163,135,0.2)">🌐</div>
             <div class="scenario-tag tag-data">大盘研判</div>
             <div class="scenario-title">今日大盘应该进攻还是防守</div>
@@ -801,7 +805,7 @@
             <span class="scenario-arrow">看大盘判断 →</span>
           </a>
 
-          <a href="chat.html" class="scenario-card" data-q="给我这周完整的操作计划：推荐2-3只这周买入的标的（含买入价、目标价、止损位）；有没有潜力暴涨的黑马？要具体可执行的方案">
+          <a href="/chat" class="scenario-card" data-q="给我这周完整的操作计划：推荐2-3只这周买入的标的（含买入价、目标价、止损位）；有没有潜力暴涨的黑马？要具体可执行的方案">
             <div class="scenario-icon-wrap" style="background:rgba(102,209,255,0.08);border:1px solid rgba(102,209,255,0.14)">📋</div>
             <div class="scenario-tag tag-ai">AI 规划</div>
             <div class="scenario-title">本周完整操作计划</div>
@@ -939,8 +943,8 @@
         <h2 class="cta-title">准备好了吗？</h2>
         <p class="cta-sub">输入任意 A 股名称，几秒内得到 AI 分析结果。<br>无需注册即可体验核心功能。</p>
         <div class="cta-actions">
-          <a href="workspace.html" class="btn-primary">立即进入工作台 →</a>
-          <a href="chat.html" class="btn-secondary">先问 AI 推荐今日好股</a>
+          <a href="/workspace" class="btn-primary">立即进入工作台 →</a>
+          <a href="/chat" class="btn-secondary">先问 AI 推荐今日好股</a>
         </div>
       </section>
 
@@ -956,24 +960,25 @@
         <div>
           <p class="footer-links-title">功能入口</p>
           <div class="footer-links">
-            <a href="workspace.html">分析工作台</a>
-            <a href="scan.html">市场扫描</a>
-            <a href="chat.html">AI 分析师</a>
-            <a href="settings.html">设置</a>
+            <a href="/workspace">分析工作台</a>
+            <a href="/scan">市场扫描</a>
+            <a href="/chat">AI 分析师</a>
+            <a href="/tools">工具箱</a>
           </div>
         </div>
         <div>
           <p class="footer-links-title">账户</p>
           <div class="footer-links">
-            <a href="auth.html?mode=login">登录</a>
-            <a href="auth.html?mode=register">注册</a>
+            <a href="/auth?mode=login">登录</a>
+            <a href="/auth?mode=register">注册</a>
           </div>
         </div>
       </footer>
 
     </div>
 
-    <script src="home.js"></script>
+    <script src="/app/theme.js?v=20260623-nav1"></script>
+    <script src="/app/home.js?v=20260623-nav1"></script>
     <script>
       // ── Welcome modal ────────────────────────────────────────────────────────
       (function() {
