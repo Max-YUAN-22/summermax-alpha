@@ -2493,28 +2493,31 @@ def get_waizao_base_info(code: str = Query(...)) -> Dict[str, Any]:
 #  Market Overview, Sector Browser, and Open AI Chat
 # ══════════════════════════════════════════════════════════════════════════════
 
-def fetch_index_quotes_sina() -> List[Dict[str, Any]]:
-    """Real-time quotes for major A-share indices via Sina hq."""
-    index_keys = [
-        {"code": "000001", "name": "上证指数", "key": "s_sh000001"},
-        {"code": "399001", "name": "深证成指", "key": "s_sz399001"},
-        {"code": "399006", "name": "创业板指", "key": "s_sz399006"},
-    ]
-    symbols = ",".join(idx["key"] for idx in index_keys)
+_INDEX_CACHE: Dict[str, Any] = {"data": None, "loaded_at": None}
+_INDEX_TTL = timedelta(minutes=2)
+_INDEX_FETCH_IN_PROGRESS = threading.Event()
+
+_INDEX_KEYS = [
+    {"code": "000001", "name": "上证指数", "key": "s_sh000001"},
+    {"code": "399001", "name": "深证成指", "key": "s_sz399001"},
+    {"code": "399006", "name": "创业板指", "key": "s_sz399006"},
+]
+
+
+def _fetch_index_quotes_blocking() -> List[Dict[str, Any]]:
+    symbols = ",".join(idx["key"] for idx in _INDEX_KEYS)
     url = f"http://hq.sinajs.cn/list={symbols}"
     headers = {**DEFAULT_HEADERS, "Referer": "https://finance.sina.com.cn"}
     resp = requests.get(url, headers=headers, timeout=8)
     text = resp.text
-
     results = []
-    for idx in index_keys:
+    for idx in _INDEX_KEYS:
         match = re.search(rf'hq_str_{idx["key"]}="([^"]*)"', text)
         if match:
             parts = match.group(1).split(",")
             if len(parts) >= 4:
                 results.append({
-                    "code": idx["code"],
-                    "name": parts[0] or idx["name"],
+                    "code": idx["code"], "name": parts[0] or idx["name"],
                     "price": safe_float(parts[1]),
                     "change": safe_float(parts[2]),
                     "change_percent": safe_float(parts[3]),
@@ -2524,28 +2527,45 @@ def fetch_index_quotes_sina() -> List[Dict[str, Any]]:
     return results
 
 
+def fetch_index_quotes_sina() -> List[Dict[str, Any]]:
+    """Real-time A-share index quotes — cached 2 min, background refresh, never blocks."""
+    entry = _INDEX_CACHE
+    fresh = entry["data"] and entry["loaded_at"] and datetime.now() - entry["loaded_at"] < _INDEX_TTL
+    if fresh:
+        return entry["data"]
+    if not _INDEX_FETCH_IN_PROGRESS.is_set():
+        _INDEX_FETCH_IN_PROGRESS.set()
+        def _bg() -> None:
+            try:
+                data = _fetch_index_quotes_blocking()
+                _INDEX_CACHE["data"] = data
+                _INDEX_CACHE["loaded_at"] = datetime.now()
+            except Exception:
+                pass
+            finally:
+                _INDEX_FETCH_IN_PROGRESS.clear()
+        threading.Thread(target=_bg, daemon=True).start()
+    if entry["data"]:
+        return entry["data"]
+    _INDEX_FETCH_IN_PROGRESS.wait(timeout=12)
+    return _INDEX_CACHE.get("data") or []
+
+
 # Sector code cache populated by fetch_sector_list(); avoids a second HTTP call in
 # fetch_sector_stocks() when the caller already rendered the sector list.
 SECTOR_CODE_CACHE: Dict[str, str] = {}
 _SECTOR_LIST_CACHE: Dict[str, Any] = {"data": None, "loaded_at": None}
-_SECTOR_LIST_TTL = timedelta(minutes=10)
+_SECTOR_LIST_TTL = timedelta(minutes=30)
+_SECTOR_FETCH_IN_PROGRESS = threading.Event()
 
 
-def fetch_sector_list() -> List[Dict[str, Any]]:
-    """Industry sectors via direct EastMoney push API (bypasses AKShare which sends no headers)."""
-    entry = _SECTOR_LIST_CACHE
-    if entry["data"] and entry["loaded_at"] and datetime.now() - entry["loaded_at"] < _SECTOR_LIST_TTL:
-        return entry["data"]
+def _fetch_sector_list_blocking() -> List[Dict[str, Any]]:
+    """Synchronous EastMoney sector fetch — always called inside a background thread."""
     url = "https://82.push2.eastmoney.com/api/qt/clist/get"
     params = {
-        "pn": "1",
-        "pz": "100",
-        "po": "1",
-        "np": "1",
+        "pn": "1", "pz": "100", "po": "1", "np": "1",
         "ut": "bd1d9ddb04089700cf9c27f6f7426281",
-        "fltt": "2",
-        "invt": "2",
-        "fid": "f3",
+        "fltt": "2", "invt": "2", "fid": "f3",
         "fs": "m:90 t:2 f:!50",
         "fields": "f3,f6,f12,f14,f104,f105,f128,f136",
     }
@@ -2559,7 +2579,6 @@ def fetch_sector_list() -> List[Dict[str, Any]]:
     diffs = (resp.json().get("data") or {}).get("diff") or []
     if not diffs:
         raise ValueError("EastMoney sector API returned empty diff list.")
-
     results = []
     for item in diffs:
         name = str(item.get("f14") or "")
@@ -2567,8 +2586,7 @@ def fetch_sector_list() -> List[Dict[str, Any]]:
         if name and code:
             SECTOR_CODE_CACHE[name] = code
         results.append({
-            "name": name,
-            "code": code,
+            "name": name, "code": code,
             "change_percent": safe_float(item.get("f3")),
             "amount": safe_float(item.get("f6")),
             "rise_count": int(item.get("f104") or 0),
@@ -2577,9 +2595,40 @@ def fetch_sector_list() -> List[Dict[str, Any]]:
             "leader_change": safe_float(item.get("f136")),
         })
     results.sort(key=lambda x: (x["change_percent"] is not None, x["change_percent"] or 0), reverse=True)
-    _SECTOR_LIST_CACHE["data"] = results
-    _SECTOR_LIST_CACHE["loaded_at"] = datetime.now()
     return results
+
+
+def fetch_sector_list() -> List[Dict[str, Any]]:
+    """Return cached sector list immediately; refresh in background when stale.
+    Never blocks the calling request thread after the first successful load."""
+    entry = _SECTOR_LIST_CACHE
+    fresh = entry["data"] and entry["loaded_at"] and datetime.now() - entry["loaded_at"] < _SECTOR_LIST_TTL
+
+    if fresh:
+        return entry["data"]
+
+    # Stale or empty — spawn background refresh (only one at a time).
+    if not _SECTOR_FETCH_IN_PROGRESS.is_set():
+        _SECTOR_FETCH_IN_PROGRESS.set()
+        def _bg() -> None:
+            try:
+                results = _fetch_sector_list_blocking()
+                _SECTOR_LIST_CACHE["data"] = results
+                _SECTOR_LIST_CACHE["loaded_at"] = datetime.now()
+            except Exception:
+                pass
+            finally:
+                _SECTOR_FETCH_IN_PROGRESS.clear()
+        threading.Thread(target=_bg, daemon=True).start()
+
+    # Return stale data if available; otherwise block this one call until data arrives.
+    if entry["data"]:
+        return entry["data"]
+
+    # First-ever load: wait for background thread (only happens once after server start,
+    # prewarm already handles this so in practice this branch is rarely reached).
+    _SECTOR_FETCH_IN_PROGRESS.wait(timeout=20)
+    return _SECTOR_LIST_CACHE.get("data") or []
 
 
 def fetch_sector_stocks(sector_name: str) -> List[Dict[str, Any]]:
@@ -3128,6 +3177,10 @@ def _prewarm_market_cache() -> None:
         pass
     try:
         fetch_sector_list()
+    except Exception:
+        pass
+    try:
+        fetch_index_quotes_sina()
     except Exception:
         pass
 
