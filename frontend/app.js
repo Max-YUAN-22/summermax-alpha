@@ -1350,6 +1350,17 @@ refreshWatchlist();
 loadMarketQuicklists();
 checkGptStatus();
 
+// Keep backend alive (Render free tier sleeps after 15 min inactivity)
+const _apiBase = () => normalizeApiBase(apiBaseInput.value);
+setInterval(() => { fetch(`${_apiBase()}/ping`).catch(() => {}); }, 10 * 60 * 1000);
+
+// If quicklists came back empty (server still warming up), retry once after 35s
+setTimeout(() => {
+  if (quicklistGainersEl && !quicklistGainersEl.querySelector(".quick-item")) {
+    loadMarketQuicklists();
+  }
+}, 35000);
+
 // Auto-analyze on page load so users see live data immediately, not placeholders.
 // Priority: URL ?code= param → last viewed stock → default 300059
 const urlCode = new URLSearchParams(location.search).get("code");

@@ -2138,11 +2138,19 @@ def build_snapshot(code: str, include_llm: bool) -> Dict[str, Any]:
     if base_entry and datetime.now() - base_entry["loaded_at"] < SNAPSHOT_BASE_CACHE_TTL:
         snapshot = {**base_entry["snapshot"]}
     else:
-        history_df, history_source = fetch_stock_history_cached(code)
+        # Parallelize the 3 independent AKShare IO calls (each ~1-3s).
+        # history + indicators/chart must finish first; realtime and intraday
+        # are independent and run concurrently to reduce wall-clock time.
+        with ThreadPoolExecutor(max_workers=3) as _exec:
+            _f_hist     = _exec.submit(fetch_stock_history_cached, code)
+            _f_realtime = _exec.submit(fetch_realtime_quote, code)
+            _f_intraday = _exec.submit(fetch_intraday_context, code)
+            history_df, history_source       = _f_hist.result()
+            realtime                          = _f_realtime.result()
+            intraday_context, intraday_source = _f_intraday.result()
+
         indicators = compute_indicators(history_df)
         chart = build_chart_payload(history_df)
-        realtime = fetch_realtime_quote(code)
-        intraday_context, intraday_source = fetch_intraday_context(code)
         core_snapshot = {
             "code": code,
             "realtime": realtime,
@@ -3095,17 +3103,20 @@ def get_full_market_snapshot() -> List[Dict[str, Any]]:
     # Return cached data if still fresh
     if entry["data"] and entry["loaded_at"] and datetime.now() - entry["loaded_at"] < FULL_MARKET_TTL:
         return entry["data"]
-    # If another thread is already fetching, return stale cache immediately
+    # Always non-blocking: kick off a background thread to refresh and
+    # return stale/empty data immediately so no request thread ever blocks here.
     if not _FETCH_IN_PROGRESS.is_set():
         _FETCH_IN_PROGRESS.set()
-        try:
-            stocks = _fetch_market_data()
-            if stocks:
-                with _CACHE_LOCK:
-                    FULL_MARKET_CACHE["data"] = stocks
-                    FULL_MARKET_CACHE["loaded_at"] = datetime.now()
-        finally:
-            _FETCH_IN_PROGRESS.clear()
+        def _bg_refresh() -> None:
+            try:
+                stocks = _fetch_market_data()
+                if stocks:
+                    with _CACHE_LOCK:
+                        FULL_MARKET_CACHE["data"] = stocks
+                        FULL_MARKET_CACHE["loaded_at"] = datetime.now()
+            finally:
+                _FETCH_IN_PROGRESS.clear()
+        threading.Thread(target=_bg_refresh, daemon=True).start()
     return FULL_MARKET_CACHE.get("data") or []
 
 
