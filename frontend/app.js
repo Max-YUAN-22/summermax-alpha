@@ -46,6 +46,10 @@ const centerPriceEl = document.getElementById("centerPrice");
 const centerChangeEl = document.getElementById("centerChange");
 const gptStatusDotEl = document.getElementById("gptStatusDot");
 const gptStatusLabelEl = document.getElementById("gptStatusLabel");
+const briefThesisEl = document.getElementById("briefThesis");
+const briefLevelsEl = document.getElementById("briefLevels");
+const briefRiskEl = document.getElementById("briefRisk");
+const briefActionEl = document.getElementById("briefAction");
 
 const I18N = {
   zh: {
@@ -196,6 +200,10 @@ const I18N = {
     scorecard: "评分卡",
     intraday: "盘中结构",
     close: "尾盘建议",
+    briefThesis: "核心判断",
+    briefLevels: "关键价位",
+    briefRisk: "当前风险",
+    briefAction: "动作建议",
   },
   en: {
     brandTitle: "SummerMax Alpha Terminal",
@@ -345,6 +353,10 @@ const I18N = {
     scorecard: "Scorecard",
     intraday: "Intraday",
     close: "Close Bias",
+    briefThesis: "Core Thesis",
+    briefLevels: "Key Levels",
+    briefRisk: "Current Risk",
+    briefAction: "Action Bias",
   },
 };
 
@@ -653,6 +665,75 @@ function renderHeroSummary(stockData = {}) {
   heroTimeframeEl.textContent = llm.timeframe || "-";
   heroScoreEl.textContent = scorecard.total != null ? `${scorecard.total} | ${scorecard.grading || "-"}` : "-";
   decorateDecisionTag(llm.direction, llm.action_bias || stockData.final_decision?.bias, scorecard);
+}
+
+function resetBriefing() {
+  if (briefThesisEl) {
+    briefThesisEl.textContent = currentLang === "zh"
+      ? "分析后这里会先告诉你这只股票当前最重要的一句话判断。"
+      : "A one-line thesis will appear here after analysis.";
+    briefThesisEl.className = "brief-value muted";
+  }
+  if (briefLevelsEl) {
+    briefLevelsEl.textContent = currentLang === "zh"
+      ? "支撑位、压力位会在这里汇总，不用去长文里找。"
+      : "Support and resistance are summarized here.";
+    briefLevelsEl.className = "brief-value muted";
+  }
+  if (briefRiskEl) {
+    briefRiskEl.textContent = currentLang === "zh"
+      ? "先看风险等级和主要风险点，再决定值不值得继续看。"
+      : "Risk level and key risks are summarized here first.";
+    briefRiskEl.className = "brief-value muted";
+  }
+  if (briefActionEl) {
+    briefActionEl.textContent = currentLang === "zh"
+      ? "这里会给出更像交易动作的偏向，而不是一大段抽象描述。"
+      : "A more action-oriented bias will appear here.";
+    briefActionEl.className = "brief-value muted";
+  }
+}
+
+function renderBriefing(stockData = {}) {
+  const llm = stockData.llm_analysis?.content || {};
+  const support = Array.isArray(llm.key_levels?.support) ? llm.key_levels.support.slice(0, 3) : [];
+  const resistance = Array.isArray(llm.key_levels?.resistance) ? llm.key_levels.resistance.slice(0, 3) : [];
+  const riskItems = Array.isArray(stockData.risk_assessment?.items) ? stockData.risk_assessment.items : [];
+  const actionBias = llm.action_bias || stockData.final_decision?.bias || "-";
+  const actionNote = stockData.final_decision?.note || llm.referee || "-";
+
+  if (briefThesisEl) {
+    briefThesisEl.textContent = llm.thesis || stockData.analysis?.detail || t("noAnalysis");
+    briefThesisEl.className = "brief-value";
+  }
+
+  if (briefLevelsEl) {
+    if (support.length || resistance.length) {
+      const supportText = support.length ? support.map((value) => formatNumber(value)).join(" / ") : "-";
+      const resistanceText = resistance.length ? resistance.map((value) => formatNumber(value)).join(" / ") : "-";
+      briefLevelsEl.textContent = currentLang === "zh"
+        ? `支撑 ${supportText} ｜ 压力 ${resistanceText}`
+        : `Support ${supportText} | Resistance ${resistanceText}`;
+      briefLevelsEl.className = "brief-value";
+    } else {
+      briefLevelsEl.textContent = currentLang === "zh" ? "暂无关键位汇总。" : "No key-level summary yet.";
+      briefLevelsEl.className = "brief-value muted";
+    }
+  }
+
+  if (briefRiskEl) {
+    const riskLevel = stockData.risk_assessment?.level || "-";
+    const riskText = riskItems.length
+      ? riskItems.slice(0, 2).join(" ")
+      : (currentLang === "zh" ? "暂无额外风险说明。" : "No additional risk note.");
+    briefRiskEl.textContent = `${riskLevel} | ${riskText}`;
+    briefRiskEl.className = "brief-value";
+  }
+
+  if (briefActionEl) {
+    briefActionEl.textContent = `${actionBias} | ${actionNote}`;
+    briefActionEl.className = "brief-value";
+  }
 }
 
 function renderLlmAnalysis(llmAnalysis) {
@@ -1152,6 +1233,7 @@ async function analyzeStock() {
   if (centerChangeEl) { centerChangeEl.textContent = "--"; centerChangeEl.className = "price-change"; }
   renderChart({});
   renderHeroSummary({});
+  resetBriefing();
   renderFundFlow({});
 
   // ── Phase 1: fast data (no LLM) ─────────────────────────────────────────
@@ -1184,6 +1266,7 @@ async function analyzeStock() {
       stockData.intraday || {},
     );
     renderHeroSummary(stockData);
+    renderBriefing(stockData);
     if (centerCodeEl) centerCodeEl.textContent = stockData.code || code;
     if (centerNameEl) centerNameEl.textContent = stockData.name || "";
     currentStockContext = stockData;
@@ -1208,6 +1291,7 @@ async function analyzeStock() {
     renderLlmAnalysis(null);
     renderCloseSignal({}, {}, {});
     renderFundFlow({});
+    resetBriefing();
     localStorage.setItem("summermax-alpha-last-json", t("unknownError"));
     analyzeBtn.disabled = false;
     return;
@@ -1226,6 +1310,7 @@ async function analyzeStock() {
     if (llmResponse.ok) {
       renderLlmAnalysis(llmData.llm_analysis);
       renderHeroSummary(llmData);
+      renderBriefing(llmData);
       currentStockContext = llmData;
       localStorage.setItem("summermax-alpha-last-json", JSON.stringify({ stock: llmData }, null, 2));
       const at = llmData.realtime?.quote_time || "";
@@ -1338,6 +1423,7 @@ setLanguage(currentLang);
 updateSetupNote();
 renderChart({});
 renderHeroSummary({});
+resetBriefing();
 renderRuleAnalysis({});
 renderLlmAnalysis(null);
 renderCloseSignal({}, {}, {});

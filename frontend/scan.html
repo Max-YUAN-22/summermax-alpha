@@ -96,6 +96,115 @@
         overflow: hidden;
       }
 
+      .scan-hero {
+        display: grid;
+        grid-template-columns: 1.05fr 0.95fr;
+        gap: 14px;
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--line);
+        background:
+          linear-gradient(180deg, rgba(8, 17, 31, 0.92), rgba(6, 14, 26, 0.78));
+      }
+
+      .scan-hero-card {
+        padding: 14px 15px;
+        border-radius: 14px;
+        border: 1px solid rgba(132,157,189,0.12);
+        background: rgba(255,255,255,0.03);
+      }
+
+      .scan-hero-eyebrow {
+        display: inline-flex;
+        padding: 4px 9px;
+        border-radius: 999px;
+        border: 1px solid rgba(102,209,255,0.18);
+        background: rgba(102,209,255,0.06);
+        color: var(--accent);
+        font-size: 0.66rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        margin-bottom: 10px;
+      }
+
+      .scan-hero-title {
+        font-size: 1.02rem;
+        font-weight: 800;
+        margin-bottom: 7px;
+      }
+
+      .scan-hero-copy {
+        color: var(--muted);
+        font-size: 0.8rem;
+        line-height: 1.7;
+      }
+
+      .scan-hero-steps {
+        display: grid;
+        gap: 9px;
+      }
+
+      .scan-step {
+        display: grid;
+        grid-template-columns: 18px 1fr;
+        gap: 8px;
+        align-items: start;
+      }
+
+      .scan-step-index {
+        display: grid;
+        place-items: center;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: rgba(102,209,255,0.12);
+        color: var(--accent);
+        font-size: 0.66rem;
+        font-weight: 800;
+      }
+
+      .scan-step-copy strong {
+        display: block;
+        font-size: 0.76rem;
+        margin-bottom: 2px;
+      }
+
+      .scan-step-copy span {
+        display: block;
+        color: var(--muted);
+        font-size: 0.72rem;
+        line-height: 1.55;
+      }
+
+      .scan-hero-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+      }
+
+      .scan-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 8px 12px;
+        border-radius: 10px;
+        text-decoration: none;
+        font-size: 0.76rem;
+        font-weight: 700;
+      }
+
+      .scan-link.primary {
+        color: #06111d;
+        background: linear-gradient(135deg, var(--accent), #2c8cff);
+      }
+
+      .scan-link.secondary {
+        color: var(--text);
+        border: 1px solid var(--accent-border);
+        background: rgba(102,209,255,0.06);
+      }
+
       /* ══ Left — Sector list ══ */
       .sector-col {
         display: flex; flex-direction: column;
@@ -299,6 +408,7 @@
       @media (max-width: 860px) {
         html, body { height: auto; overflow: auto; }
         .shell { grid-template-columns: 1fr; height: auto; overflow: visible; }
+        .scan-hero { grid-template-columns: 1fr; }
         .sector-col { height: 60vh; border-right: none; border-bottom: 1px solid var(--line); }
         .stock-col { min-height: 50vh; }
         #stockPanel { display: flex !important; }
@@ -332,6 +442,44 @@
 
       <!-- ── Left: sector list ── -->
       <div class="sector-col">
+        <div class="scan-hero">
+          <div class="scan-hero-card">
+            <span class="scan-hero-eyebrow">Market Discovery</span>
+            <div class="scan-hero-title">先找热点，再进工作台深挖。</div>
+            <div class="scan-hero-copy">
+              这个页面负责从市场里发现机会，而不是直接给结论。先看哪些板块最强、最活跃，再点进个股做单股判断。
+            </div>
+            <div class="scan-hero-actions">
+              <a class="scan-link primary" href="/workspace">直接打开工作台</a>
+              <a class="scan-link secondary" href="/chat">让 AI 解释热点</a>
+            </div>
+          </div>
+          <div class="scan-hero-card">
+            <div class="scan-hero-steps">
+              <div class="scan-step">
+                <span class="scan-step-index">1</span>
+                <div class="scan-step-copy">
+                  <strong>先看左侧板块</strong>
+                  <span>优先点涨幅高、上涨家数多、成交额大的板块。</span>
+                </div>
+              </div>
+              <div class="scan-step">
+                <span class="scan-step-index">2</span>
+                <div class="scan-step-copy">
+                  <strong>再看右侧个股</strong>
+                  <span>从板块内挑涨跌幅、换手率、成交额更像样的候选。</span>
+                </div>
+              </div>
+              <div class="scan-step">
+                <span class="scan-step-index">3</span>
+                <div class="scan-step-copy">
+                  <strong>点分析进入工作台</strong>
+                  <span>进到单股视角后，再看资金流、关键位和 AI 结论。</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
         <div class="panel-head">
           <div class="panel-head-left">
             <span class="panel-label">行业板块</span>
@@ -380,7 +528,7 @@
         <div class="placeholder" id="stockPlaceholder">
           <div class="placeholder-icon">⟵</div>
           <p class="placeholder-title">选择板块</p>
-          <p class="placeholder-sub">点击左侧任意行业板块，即可查看该板块所有个股行情</p>
+          <p class="placeholder-sub">点击左侧任意行业板块，即可查看该板块所有个股行情。优先从涨幅高、上涨家数多、成交额大的板块开始。</p>
         </div>
 
       </div>

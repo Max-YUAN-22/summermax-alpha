@@ -345,6 +345,60 @@
         accent-color: var(--accent-2);
       }
 
+      .quickstart-card {
+        margin-top: 10px;
+        padding: 10px 12px;
+        border-radius: 12px;
+        border: 1px solid rgba(102,209,255,0.12);
+        background: linear-gradient(135deg, rgba(102,209,255,0.08), rgba(36,163,135,0.06));
+      }
+
+      .quickstart-title {
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--accent);
+        margin-bottom: 8px;
+      }
+
+      .quickstart-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .quickstart-item {
+        display: grid;
+        grid-template-columns: 18px 1fr;
+        gap: 8px;
+        align-items: start;
+      }
+
+      .quickstart-index {
+        display: grid;
+        place-items: center;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: rgba(102,209,255,0.12);
+        color: var(--accent);
+        font-size: 0.66rem;
+        font-weight: 800;
+      }
+
+      .quickstart-copy strong {
+        display: block;
+        font-size: 0.76rem;
+        margin-bottom: 2px;
+      }
+
+      .quickstart-copy span {
+        display: block;
+        color: var(--muted);
+        font-size: 0.72rem;
+        line-height: 1.55;
+      }
+
       /* Watchlist */
       .watch-header {
         display: flex;
@@ -542,6 +596,44 @@
       .decision-bearish { color: var(--bear); background: rgba(255,107,126,0.12); }
       .decision-watch   { color: var(--warn); background: rgba(243,177,75,0.12); }
       .decision-reduce  { color: var(--danger); background: rgba(255,108,122,0.12); }
+
+      .briefing-ribbon {
+        display: grid;
+        grid-template-columns: 1.3fr 1fr 1fr 0.9fr;
+        gap: 10px;
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--line);
+        background:
+          linear-gradient(180deg, rgba(9, 20, 37, 0.92), rgba(7, 16, 30, 0.86));
+      }
+
+      .brief-card {
+        min-height: 94px;
+        padding: 11px 12px;
+        border-radius: 12px;
+        border: 1px solid rgba(132,157,189,0.12);
+        background: rgba(255,255,255,0.03);
+      }
+
+      .brief-label {
+        display: block;
+        margin-bottom: 7px;
+        font-size: 0.66rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted-2);
+      }
+
+      .brief-value {
+        font-size: 0.78rem;
+        line-height: 1.62;
+        color: var(--text);
+      }
+
+      .brief-value.muted {
+        color: var(--muted);
+      }
 
       /* Chart */
       .chart-area {
@@ -828,6 +920,7 @@
         .col-right  { order: 3; display: block; border: none; border-top: 1px solid var(--line); }
 
         .chart-svg { height: 220px; }
+        .briefing-ribbon { grid-template-columns: 1fr; }
       }
     </style>
   </head>
@@ -899,6 +992,32 @@
               <a href="/debug" style="font-size:0.72rem;color:var(--muted-2);text-decoration:none" data-i18n="openDebugBtn">查看原始数据 →</a>
             </div>
           </details>
+          <div class="quickstart-card">
+            <div class="quickstart-title">3 Step Flow</div>
+            <div class="quickstart-list">
+              <div class="quickstart-item">
+                <span class="quickstart-index">1</span>
+                <div class="quickstart-copy">
+                  <strong>先搜股票</strong>
+                  <span>输入代码或名称，先拿到实时行情和 K 线。</span>
+                </div>
+              </div>
+              <div class="quickstart-item">
+                <span class="quickstart-index">2</span>
+                <div class="quickstart-copy">
+                  <strong>看摘要层</strong>
+                  <span>优先看方向、关键位、风险和动作偏向，不必先读长文本。</span>
+                </div>
+              </div>
+              <div class="quickstart-item">
+                <span class="quickstart-index">3</span>
+                <div class="quickstart-copy">
+                  <strong>再让 AI 追问</strong>
+                  <span>确认买点、止损和时间框架，再决定是否继续研究。</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- Watchlist -->
@@ -966,6 +1085,25 @@
           <div class="dec-cell">
             <span class="dec-label" data-i18n="overviewTimeframe">时间框架</span>
             <strong id="heroTimeframe" class="dec-val">-</strong>
+          </div>
+        </div>
+
+        <div class="briefing-ribbon">
+          <div class="brief-card">
+            <span class="brief-label" data-i18n="briefThesis">核心判断</span>
+            <div id="briefThesis" class="brief-value muted">分析后这里会先告诉你这只股票当前最重要的一句话判断。</div>
+          </div>
+          <div class="brief-card">
+            <span class="brief-label" data-i18n="briefLevels">关键价位</span>
+            <div id="briefLevels" class="brief-value muted">支撑位、压力位会在这里汇总，不用去长文里找。</div>
+          </div>
+          <div class="brief-card">
+            <span class="brief-label" data-i18n="briefRisk">当前风险</span>
+            <div id="briefRisk" class="brief-value muted">先看风险等级和主要风险点，再决定值不值得继续看。</div>
+          </div>
+          <div class="brief-card">
+            <span class="brief-label" data-i18n="briefAction">动作建议</span>
+            <div id="briefAction" class="brief-value muted">这里会给出更像交易动作的偏向，而不是一大段抽象描述。</div>
           </div>
         </div>
 
