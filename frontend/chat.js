@@ -920,3 +920,22 @@ async function init() {
 init();
 
 setInterval(() => { fetch(`${getApiBase()}/ping`).catch(() => {}); }, 10 * 60 * 1000);
+
+// ── Mobile panel toggle ────────────────────────────────────────────────────────
+
+function switchMobilePanel(panel) {
+  const shell = document.getElementById("mainShell");
+  if (!shell) return;
+  const btnChat = document.getElementById("mobileTabChat");
+  const btnMatrix = document.getElementById("mobileTabMatrix");
+  if (panel === "matrix") {
+    shell.classList.add("show-matrix");
+    if (btnMatrix) btnMatrix.classList.add("active");
+    if (btnChat) btnChat.classList.remove("active");
+  } else {
+    shell.classList.remove("show-matrix");
+    if (btnChat) btnChat.classList.add("active");
+    if (btnMatrix) btnMatrix.classList.remove("active");
+    chatInputEl.focus();
+  }
+}

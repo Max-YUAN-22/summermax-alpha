@@ -432,13 +432,70 @@
 
       .input-hint { font-size: 0.7rem; color: var(--muted-2); text-align: right; }
 
+      /* ── Mobile panel toggle bar ── */
+      .mobile-panel-tabs {
+        display: none;
+      }
+
       /* ── Responsive ── */
-      @media (max-width: 900px) {
-        .shell { grid-template-columns: 1fr; height: auto; overflow: visible; }
+      @media (max-width: 960px) {
+        /* Tablet: shrink left panel */
+        .shell { grid-template-columns: 360px 1fr; }
+      }
+
+      @media (max-width: 720px) {
+        /* Mobile: single column with tab toggle */
         html, body { overflow: auto; }
-        .matrix-col { height: 50vh; border-right: none; border-bottom: 1px solid var(--line); }
-        .chat-col { height: 55vh; }
-        .messages { overflow-y: auto; }
+
+        .topbar .page-nav { display: none; }
+        .topbar .topbar-divider { display: none; }
+        .brand-name { display: none; }
+
+        .mobile-panel-tabs {
+          display: flex;
+          background: rgba(5, 13, 26, 0.98);
+          border-bottom: 1px solid var(--line);
+          flex-shrink: 0;
+        }
+        .mobile-panel-tabs button {
+          flex: 1; padding: 10px 0;
+          border: none; background: transparent;
+          color: var(--muted-2); font-size: 0.82rem; font-weight: 600;
+          cursor: pointer; border-bottom: 2px solid transparent;
+          font-family: inherit; transition: all 0.15s;
+        }
+        .mobile-panel-tabs button.active {
+          color: var(--accent); border-bottom-color: var(--accent);
+        }
+
+        .shell {
+          grid-template-columns: 1fr;
+          height: auto;
+          overflow: visible;
+        }
+
+        /* Default: show chat, hide matrix */
+        .matrix-col {
+          display: none;
+          border-right: none;
+        }
+        .chat-col {
+          height: calc(100svh - 48px - 34px - 42px);
+          display: flex;
+          flex-direction: column;
+        }
+        .messages { overflow-y: auto; flex: 1; }
+        .input-area { flex-shrink: 0; }
+
+        /* When matrix tab active */
+        .shell.show-matrix .matrix-col {
+          display: flex;
+          height: calc(100svh - 48px - 34px - 42px);
+        }
+        .shell.show-matrix .chat-col { display: none; }
+
+        /* Matrix list needs explicit height */
+        .shell.show-matrix #matrixList { overflow-y: auto; }
       }
 
       /* ── Left panel tabs ── */
@@ -560,7 +617,13 @@
       <span class="mkt-loading">正在获取市场数据…</span>
     </div>
 
-    <div class="shell">
+    <div class="shell" id="mainShell">
+
+      <!-- Mobile-only panel toggle (hidden on desktop via CSS) -->
+      <div class="mobile-panel-tabs" id="mobilePanelTabs" style="grid-column:1/-1">
+        <button id="mobileTabChat" class="active" onclick="switchMobilePanel('chat')">AI 分析师</button>
+        <button id="mobileTabMatrix" onclick="switchMobilePanel('matrix')">行情矩阵</button>
+      </div>
 
       <!-- ── Left: Full market matrix ── -->
       <div class="matrix-col">

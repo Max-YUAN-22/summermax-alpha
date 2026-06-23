@@ -799,16 +799,34 @@
       .btn-send:hover { background: linear-gradient(135deg, rgba(102,209,255,0.3), rgba(47,140,255,0.24)); }
       .btn-send:disabled { opacity: 0.4; cursor: not-allowed; }
 
-      /* Responsive */
-      @media (max-width: 900px) {
+      /* ── Responsive ── */
+      @media (max-width: 1100px) {
+        /* Tablet: collapse right panel */
+        .terminal { grid-template-columns: 200px 1fr; }
+        .col-right { display: none; }
+      }
+
+      @media (max-width: 760px) {
+        /* Mobile: single column, chart-first order */
+        html, body { overflow: auto; }
+
+        .topbar .page-nav { display: none; }
+        .topbar .topbar-divider:first-of-type { display: none; }
+        .topbar .brand-name { display: none; }
+        .topbar .gpt-indicator { display: none; }
+        .lang-switch { display: none; }
+
         .terminal {
           grid-template-columns: 1fr;
           height: auto;
-          overflow: auto;
+          overflow: visible;
         }
         .col { overflow-y: visible; }
-        .col-left, .col-right { border: none; border-bottom: 1px solid var(--line); }
-        html, body { overflow: auto; }
+        .col-left  { order: 2; border: none; border-top: 1px solid var(--line); }
+        .col-center { order: 1; }
+        .col-right  { order: 3; display: block; border: none; border-top: 1px solid var(--line); }
+
+        .chart-svg { height: 220px; }
       }
     </style>
   </head>
