@@ -90,7 +90,7 @@ async function loadOverview() {
       sectorsEl.innerHTML = top5.map((item) => {
         const cls = chgClass(item.f3);
         return `
-          <a href="scan.html" class="sector-pill">
+          <a href="/scan" class="sector-pill">
             <span class="sector-pill-chg ${cls}">${chgText(item.f3)}</span>
             <span>${item.f14 || ""}</span>
             ${item.f128 ? `<span class="sector-pill-leader">${item.f128}</span>` : ""}

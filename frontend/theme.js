@@ -274,7 +274,7 @@
     sb.id = "__sb";
     sb.setAttribute("aria-label", "Sidebar navigation");
     sb.innerHTML = `
-      <a href="index.html" class="sb-logo" title="首页">
+      <a href="/home" class="sb-logo" title="首页">
         <div class="sb-logo-mark">Sα</div>
         <span class="sb-logo-text">SummerMax Alpha</span>
       </a>

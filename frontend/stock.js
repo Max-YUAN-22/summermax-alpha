@@ -20,7 +20,7 @@ const params = new URLSearchParams(location.search);
 const CODE = (params.get("code") || "").replace(/\D/g, "").padStart(6, "0").slice(0, 6);
 
 if (!CODE || CODE === "000000") {
-  document.body.innerHTML = `<div style="padding:60px;text-align:center;color:#8ea3bd">无效的股票代码，请从市场扫描页进入。<br><a href="scan.html" style="color:#66d1ff">返回市场扫描</a></div>`;
+  document.body.innerHTML = `<div style="padding:60px;text-align:center;color:#8ea3bd">无效的股票代码，请从市场扫描页进入。<br><a href="/scan" style="color:#66d1ff">返回市场扫描</a></div>`;
   throw new Error("No valid stock code");
 }
 
@@ -68,7 +68,7 @@ function renderUserBadge(email, role) {
     localStorage.removeItem("summermax-token");
     localStorage.removeItem("summermax-email");
     localStorage.removeItem("summermax-role");
-    window.location.href = "auth.html";
+    window.location.href = "/auth";
   });
 }
 

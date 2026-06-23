@@ -251,7 +251,7 @@ async function loadSectorStocks(sectorName, sectorCode) {
             <span class="sr2-chg ${cls}">${chgText(s.change_percent)}</span>
             <span class="sr2-amount">${fmtAmount(s.amount)}</span>
             <span class="sr2-turn">${s.turnover_rate != null ? Number(s.turnover_rate).toFixed(1) + "%" : "--"}</span>
-            <a href="workspace.html?code=${s.code}" class="btn-analyze-stock">分析</a>
+            <a href="/workspace?code=${s.code}" class="btn-analyze-stock">分析</a>
           </div>
         `;
       }).join("");

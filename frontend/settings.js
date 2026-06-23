@@ -45,7 +45,7 @@ let selectedModel = "";
 async function init() {
   const token = getToken();
   if (!token) {
-    window.location.href = "auth.html";
+    window.location.href = "/auth";
     return;
   }
 
@@ -55,7 +55,7 @@ async function init() {
     });
     if (res.status === 401) {
       localStorage.removeItem("summermax-token");
-      window.location.href = "auth.html";
+      window.location.href = "/auth";
       return;
     }
     if (!res.ok) throw new Error("无法获取用户信息");
@@ -95,7 +95,7 @@ function renderUserBadge() {
     localStorage.removeItem("summermax-token");
     localStorage.removeItem("summermax-email");
     localStorage.removeItem("summermax-role");
-    window.location.href = "auth.html";
+    window.location.href = "/auth";
   });
 }
 

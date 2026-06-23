@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
     <title>SummerMax Alpha · 选股器</title>
-    <link rel="stylesheet" href="/app/theme.css?v=20260623-nav1" />
+    <link rel="stylesheet" href="/app/theme.css?v=20260624-hotfix1" />
     <style>
       :root {
         --bg: #07111f;
@@ -625,7 +625,7 @@
       </div>
     </div>
 
-    <script src="/app/theme.js?v=20260623-nav1"></script>
+    <script src="/app/theme.js?v=20260624-hotfix1"></script>
     <script>
     /* ══════════════════════════════════════════════════════════
        SummerMax Alpha — 选股器  v20260623
@@ -1098,7 +1098,7 @@
           <span>${ret60Str}</span>
           <span class="sr-actions">
             <button class="btn-watch${inWatch?" active":""}" onclick="onWatch(this,'${s.code}')" title="加自选">☆</button>
-            <a href="workspace.html?code=${s.code}" class="btn-analyze">分析</a>
+            <a href="/workspace?code=${s.code}" class="btn-analyze">分析</a>
           </span>
         </div>`;
       }).join("");

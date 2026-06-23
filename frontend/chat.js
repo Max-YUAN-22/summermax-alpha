@@ -30,7 +30,7 @@ async function checkAuth() {
     if (res.status === 401) {
       localStorage.removeItem("summermax-token");
       localStorage.removeItem("summermax-email");
-      window.location.href = "auth.html";
+      window.location.href = "/auth";
     } else if (res.ok) {
       const data = await res.json();
       renderUserBadge(data.email, data.role);
@@ -52,7 +52,7 @@ function renderUserBadge(email, role) {
     localStorage.removeItem("summermax-token");
     localStorage.removeItem("summermax-email");
     localStorage.removeItem("summermax-role");
-    window.location.href = "auth.html";
+    window.location.href = "/auth";
   });
 }
 
@@ -285,7 +285,7 @@ function renderMatrix() {
       <span class="mx-chg ${cls}">${chgText(s.change_percent)}</span>
       <span class="mx-amount">${fmtAmt(s.amount)}</span>
       <span class="mx-turn">${s.turnover_rate > 0 ? s.turnover_rate.toFixed(1) + "%" : "--"}</span>
-      <a href="stock.html?code=${s.code}" class="btn-analyze-sm">分析</a>
+      <a href="/stock?code=${s.code}" class="btn-analyze-sm">分析</a>
     `;
     fragment.appendChild(row);
   });
@@ -760,7 +760,7 @@ async function sendMessage(text) {
 
     if (response.status === 401) {
       thinkEl.remove();
-      window.location.href = "auth.html";
+      window.location.href = "/auth";
       return;
     }
 
