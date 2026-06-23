@@ -42,6 +42,14 @@ const MODELS = [
     badgeCls: "badge-eco",
   },
   {
+    id: "gpt-5.5",
+    provider: "openai",
+    name: "GPT-5.5",
+    desc: "最新旗舰模型，推理能力最强，适合复杂选股分析",
+    badge: "最强",
+    badgeCls: "badge-fast",
+  },
+  {
     id: "gpt-4o",
     provider: "openai",
     name: "GPT-4o",
