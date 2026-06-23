@@ -16,8 +16,10 @@
         --accent-2: #24a387;
         --bull: #2ed09a;
         --bear: #ff6b7e;
-        --shadow-sm: 0 4px 20px rgba(0,0,0,0.24);
-        --shadow: 0 20px 60px rgba(0,0,0,0.36);
+        --warn: #f3b14b;
+        --shadow-sm: 0 4px 20px rgba(0,0,0,0.28);
+        --shadow: 0 20px 60px rgba(0,0,0,0.4);
+        --radius: 18px;
       }
 
       * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -29,8 +31,9 @@
         font-size: 14px;
         background: var(--bg);
         background-image:
-          radial-gradient(ellipse 60% 40% at 20% 0%, rgba(102,209,255,0.10) 0%, transparent 60%),
-          radial-gradient(ellipse 50% 30% at 80% 10%, rgba(36,163,135,0.10) 0%, transparent 50%);
+          radial-gradient(ellipse 70% 50% at 15% -5%, rgba(102,209,255,0.12) 0%, transparent 55%),
+          radial-gradient(ellipse 55% 35% at 85% 5%, rgba(36,163,135,0.10) 0%, transparent 50%),
+          radial-gradient(ellipse 40% 40% at 50% 80%, rgba(102,209,255,0.04) 0%, transparent 50%);
       }
 
       ::-webkit-scrollbar { width: 4px; }
@@ -40,537 +43,636 @@
       .up { color: var(--bull); }
       .down { color: var(--bear); }
 
-      /* ── Header ── */
+      /* ══════════════════════════════════════
+         WELCOME MODAL
+      ══════════════════════════════════════ */
+      .modal-overlay {
+        position: fixed; inset: 0; z-index: 1000;
+        background: rgba(4, 10, 22, 0.82);
+        backdrop-filter: blur(8px);
+        display: flex; align-items: center; justify-content: center;
+        padding: 16px;
+        opacity: 0; animation: fadeIn 0.25s ease forwards;
+      }
+
+      .modal-overlay.hidden { display: none; }
+
+      @keyframes fadeIn { to { opacity: 1; } }
+      @keyframes slideUp { from { transform: translateY(24px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+      .modal-box {
+        background: linear-gradient(145deg, rgba(9, 21, 40, 0.98), rgba(6, 14, 28, 0.98));
+        border: 1px solid rgba(102,209,255,0.2);
+        border-radius: 24px;
+        padding: 40px 36px 32px;
+        max-width: 420px;
+        width: 100%;
+        box-shadow: 0 40px 100px rgba(0,0,0,0.6);
+        animation: slideUp 0.3s ease forwards;
+        position: relative;
+      }
+
+      .modal-logo {
+        display: flex; align-items: center; gap: 10px;
+        margin-bottom: 24px;
+      }
+
+      .modal-mark {
+        display: grid; place-items: center;
+        width: 40px; height: 40px; border-radius: 12px;
+        background: linear-gradient(135deg, rgba(102,209,255,0.25), rgba(36,163,135,0.30));
+        border: 1px solid rgba(102,209,255,0.25);
+        font-size: 1rem; font-weight: 800; letter-spacing: 0.02em;
+      }
+
+      .modal-title-wrap { display: flex; flex-direction: column; gap: 2px; }
+      .modal-brand { font-size: 1rem; font-weight: 800; letter-spacing: 0.02em; }
+      .modal-tagline { font-size: 0.72rem; color: var(--muted-2); }
+
+      .modal-headline {
+        font-size: 1.3rem; font-weight: 800; line-height: 1.35;
+        margin-bottom: 10px; letter-spacing: -0.02em;
+      }
+
+      .modal-desc {
+        font-size: 0.86rem; color: var(--muted); line-height: 1.7;
+        margin-bottom: 28px;
+      }
+
+      .modal-benefits {
+        display: flex; flex-direction: column; gap: 8px;
+        margin-bottom: 28px;
+      }
+
+      .modal-benefit {
+        display: flex; align-items: center; gap: 9px;
+        font-size: 0.84rem; color: var(--muted);
+      }
+
+      .modal-benefit-icon {
+        width: 20px; height: 20px; border-radius: 6px;
+        background: rgba(46,208,154,0.12);
+        border: 1px solid rgba(46,208,154,0.2);
+        display: grid; place-items: center;
+        font-size: 0.7rem; flex-shrink: 0;
+        color: var(--bull);
+      }
+
+      .modal-actions {
+        display: flex; flex-direction: column; gap: 9px;
+        margin-bottom: 14px;
+      }
+
+      .modal-btn-primary {
+        display: flex; align-items: center; justify-content: center;
+        padding: 13px 20px; border-radius: 12px; border: none;
+        background: linear-gradient(135deg, var(--accent), #2c8cff);
+        color: #060f1c; font-weight: 800; font-size: 0.92rem;
+        cursor: pointer; text-decoration: none;
+        transition: opacity 0.15s, transform 0.12s;
+      }
+
+      .modal-btn-primary:hover { opacity: 0.88; transform: translateY(-1px); }
+
+      .modal-btn-secondary {
+        display: flex; align-items: center; justify-content: center;
+        padding: 12px 20px; border-radius: 12px;
+        border: 1px solid rgba(102,209,255,0.2);
+        background: rgba(102,209,255,0.06);
+        color: var(--text); font-weight: 600; font-size: 0.88rem;
+        cursor: pointer; text-decoration: none;
+        transition: background 0.15s;
+      }
+
+      .modal-btn-secondary:hover { background: rgba(102,209,255,0.12); }
+
+      .modal-skip {
+        display: block; text-align: center;
+        font-size: 0.76rem; color: var(--muted-2);
+        cursor: pointer; text-decoration: none;
+        transition: color 0.15s;
+      }
+
+      .modal-skip:hover { color: var(--muted); }
+
+      .modal-divider {
+        display: flex; align-items: center; gap: 10px;
+        margin: 4px 0;
+        font-size: 0.72rem; color: var(--muted-2);
+      }
+
+      .modal-divider::before, .modal-divider::after {
+        content: ""; flex: 1; height: 1px; background: var(--line);
+      }
+
+      /* ══════════════════════════════════════
+         TOPBAR
+      ══════════════════════════════════════ */
       .topbar {
-        position: sticky;
-        top: 0;
-        z-index: 100;
+        position: sticky; top: 0; z-index: 100;
         height: 56px;
-        display: flex;
-        align-items: center;
-        gap: 14px;
+        display: flex; align-items: center; gap: 14px;
         padding: 0 28px;
-        background: rgba(6, 13, 24, 0.92);
-        backdrop-filter: blur(12px);
+        background: rgba(6, 13, 24, 0.94);
+        backdrop-filter: blur(14px);
         border-bottom: 1px solid var(--line);
       }
 
-      .brand {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        flex-shrink: 0;
-      }
+      .brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 
       .brand-mark {
-        display: grid;
-        place-items: center;
-        width: 32px;
-        height: 32px;
-        border-radius: 9px;
+        display: grid; place-items: center;
+        width: 32px; height: 32px; border-radius: 9px;
         background: linear-gradient(135deg, rgba(102,209,255,0.25), rgba(36,163,135,0.30));
         border: 1px solid rgba(102,209,255,0.22);
-        font-size: 0.8rem;
-        font-weight: 800;
-        letter-spacing: 0.02em;
-        flex-shrink: 0;
+        font-size: 0.8rem; font-weight: 800; flex-shrink: 0;
       }
 
-      .brand-name {
-        font-size: 0.92rem;
-        font-weight: 700;
-        letter-spacing: 0.02em;
-        white-space: nowrap;
-      }
-
+      .brand-name { font-size: 0.92rem; font-weight: 700; white-space: nowrap; }
       .brand-tag {
-        font-size: 0.68rem;
-        color: var(--muted-2);
-        letter-spacing: 0.04em;
-        border: 1px solid var(--line);
-        border-radius: 6px;
-        padding: 2px 7px;
-        white-space: nowrap;
+        font-size: 0.68rem; color: var(--muted-2);
+        border: 1px solid var(--line); border-radius: 6px; padding: 2px 7px;
       }
 
       .topbar-spacer { flex: 1; }
 
-      .page-nav {
-        display: flex;
-        gap: 2px;
-      }
-
+      .page-nav { display: flex; gap: 2px; }
       .page-nav a {
-        padding: 6px 13px;
-        border-radius: 8px;
-        text-decoration: none;
-        color: var(--muted);
-        font-size: 0.84rem;
-        transition: background 0.15s, color 0.15s;
-        white-space: nowrap;
+        padding: 6px 12px; border-radius: 8px;
+        text-decoration: none; color: var(--muted); font-size: 0.84rem;
+        transition: background 0.15s, color 0.15s; white-space: nowrap;
       }
-
       .page-nav a:hover { background: rgba(255,255,255,0.06); color: var(--text); }
       .page-nav a.active { background: rgba(102,209,255,0.12); color: var(--accent); font-weight: 700; }
 
       .nav-cta {
-        display: inline-flex;
-        align-items: center;
-        padding: 7px 16px;
-        border-radius: 9px;
+        display: inline-flex; align-items: center; gap: 5px;
+        padding: 7px 15px; border-radius: 9px;
         background: linear-gradient(135deg, rgba(102,209,255,0.22), rgba(36,163,135,0.20));
         border: 1px solid rgba(102,209,255,0.22);
-        color: var(--text) !important;
-        font-weight: 700;
-        font-size: 0.84rem;
-        white-space: nowrap;
-        transition: background 0.15s !important;
+        color: var(--text) !important; font-weight: 700; font-size: 0.84rem;
+        white-space: nowrap; transition: background 0.15s !important;
       }
-
       .nav-cta:hover { background: linear-gradient(135deg, rgba(102,209,255,0.34), rgba(36,163,135,0.30)) !important; }
 
-      /* ── Shell ── */
+      .nav-auth-btn {
+        display: inline-flex; align-items: center;
+        padding: 6px 12px; border-radius: 8px;
+        border: 1px solid var(--line); background: transparent;
+        color: var(--muted); font-size: 0.84rem; cursor: pointer;
+        text-decoration: none; font-family: inherit;
+        transition: color 0.15s, border-color 0.15s;
+      }
+      .nav-auth-btn:hover { color: var(--text); border-color: rgba(102,209,255,0.3); }
+
+      /* ══════════════════════════════════════
+         MARKET STATS BAR
+      ══════════════════════════════════════ */
+      .market-bar {
+        background: rgba(5, 12, 22, 0.7);
+        border-bottom: 1px solid var(--line);
+        display: flex; align-items: center; gap: 0;
+        overflow-x: auto; white-space: nowrap;
+        height: 34px;
+      }
+
+      .market-bar::-webkit-scrollbar { height: 2px; }
+
+      .mkt-inner {
+        display: flex; align-items: center; gap: 12px;
+        padding: 0 28px; font-size: 0.75rem;
+      }
+
+      .mkt-idx { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+      .mkt-idx-name { color: var(--muted-2); }
+      .mkt-idx-price { font-weight: 700; }
+      .mkt-divider { width: 1px; height: 12px; background: var(--line); flex-shrink: 0; }
+      .mkt-stats { display: flex; align-items: center; gap: 6px; font-size: 0.72rem; color: var(--muted-2); }
+      .mkt-up { color: var(--bull); font-weight: 700; }
+      .mkt-down { color: var(--bear); font-weight: 700; }
+      .mkt-flat { color: var(--muted-2); font-weight: 700; }
+      .mkt-loading { color: var(--muted-2); font-style: italic; padding: 0 28px; }
+
+      /* ══════════════════════════════════════
+         SHELL
+      ══════════════════════════════════════ */
       .shell {
-        width: min(1280px, calc(100% - 40px));
+        width: min(1260px, calc(100% - 40px));
         margin: 0 auto;
         padding-bottom: 80px;
       }
 
-      /* ── Hero ── */
+      /* ══════════════════════════════════════
+         HERO
+      ══════════════════════════════════════ */
       .hero {
         display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 40px;
-        align-items: center;
-        padding: 72px 0 56px;
+        grid-template-columns: 1fr 420px;
+        gap: 48px;
+        align-items: start;
+        padding: 64px 0 52px;
       }
 
-      .hero-left {}
-
       .hero-eyebrow {
-        display: inline-flex;
-        align-items: center;
-        gap: 7px;
-        font-size: 0.76rem;
-        font-weight: 600;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: var(--accent);
-        border: 1px solid rgba(102,209,255,0.22);
-        border-radius: 999px;
-        padding: 4px 12px;
-        margin-bottom: 20px;
+        display: inline-flex; align-items: center; gap: 7px;
+        font-size: 0.74rem; font-weight: 700; letter-spacing: 0.08em;
+        text-transform: uppercase; color: var(--accent);
+        border: 1px solid rgba(102,209,255,0.22); border-radius: 999px;
+        padding: 4px 12px; margin-bottom: 18px;
         background: rgba(102,209,255,0.06);
       }
 
       .hero-eyebrow-dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: var(--bull);
-        box-shadow: 0 0 6px rgba(46,208,154,0.7);
+        width: 6px; height: 6px; border-radius: 50%;
+        background: var(--bull); box-shadow: 0 0 7px rgba(46,208,154,0.7);
         animation: pulse 2s infinite;
+        flex-shrink: 0;
       }
 
-      @keyframes pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.4; }
-      }
+      @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.35; } }
 
       .hero h1 {
-        font-size: clamp(2rem, 4vw, 3.2rem);
-        font-weight: 800;
-        line-height: 1.08;
-        letter-spacing: -0.03em;
-        margin-bottom: 18px;
+        font-size: clamp(1.9rem, 3.6vw, 3rem);
+        font-weight: 900; line-height: 1.08;
+        letter-spacing: -0.03em; margin-bottom: 16px;
       }
 
       .hero h1 em {
         font-style: normal;
-        background: linear-gradient(90deg, var(--accent), var(--accent-2));
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
+        background: linear-gradient(100deg, var(--accent) 0%, var(--accent-2) 100%);
+        -webkit-background-clip: text; -webkit-text-fill-color: transparent;
         background-clip: text;
       }
 
       .hero-sub {
-        font-size: 1rem;
-        color: var(--muted);
-        line-height: 1.72;
-        max-width: 460px;
-        margin-bottom: 30px;
+        font-size: 1rem; color: var(--muted); line-height: 1.75;
+        max-width: 480px; margin-bottom: 28px;
       }
 
-      .hero-actions {
-        display: flex;
-        gap: 12px;
-        flex-wrap: wrap;
+      .hero-stats {
+        display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 32px;
       }
+
+      .hero-stat { display: flex; flex-direction: column; gap: 2px; }
+      .hero-stat-num { font-size: 1.4rem; font-weight: 800; letter-spacing: -0.02em; color: var(--accent); }
+      .hero-stat-label { font-size: 0.72rem; color: var(--muted-2); letter-spacing: 0.04em; }
+
+      .hero-actions { display: flex; gap: 11px; flex-wrap: wrap; }
 
       .btn-primary {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 14px 24px;
-        border-radius: 12px;
-        text-decoration: none;
-        font-weight: 700;
-        font-size: 0.96rem;
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 13px 22px; border-radius: 12px;
+        text-decoration: none; font-weight: 700; font-size: 0.94rem;
         background: linear-gradient(135deg, var(--accent), #2c8cff);
-        color: #06111d;
+        color: #060f1c;
         transition: opacity 0.15s, transform 0.12s;
       }
-
-      .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+      .btn-primary:hover { opacity: 0.88; transform: translateY(-1px); }
 
       .btn-secondary {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 14px 24px;
-        border-radius: 12px;
-        text-decoration: none;
-        font-weight: 600;
-        font-size: 0.96rem;
-        border: 1px solid var(--line);
-        color: var(--text);
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 13px 22px; border-radius: 12px;
+        text-decoration: none; font-weight: 600; font-size: 0.94rem;
+        border: 1px solid var(--line); color: var(--text);
         background: rgba(255,255,255,0.04);
         transition: background 0.15s, transform 0.12s;
       }
-
       .btn-secondary:hover { background: rgba(255,255,255,0.08); transform: translateY(-1px); }
 
-      /* ── Indices card ── */
-      .hero-right {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
+      /* ── Right panel: indices + sectors ── */
+      .hero-right { display: flex; flex-direction: column; gap: 12px; }
+
+      .data-card {
+        background: rgba(8, 19, 36, 0.92);
+        border: 1px solid var(--line); border-radius: 20px;
+        padding: 18px 20px; box-shadow: var(--shadow-sm);
       }
 
-      .indices-card {
-        background: var(--panel);
-        border: 1px solid var(--line);
-        border-radius: 20px;
-        padding: 20px 22px;
-        box-shadow: var(--shadow-sm);
-      }
-
-      .indices-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 14px;
-      }
-
-      .indices-title {
-        font-size: 0.7rem;
-        font-weight: 700;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: var(--muted-2);
-      }
-
-      .indices-time {
-        font-size: 0.68rem;
-        color: var(--muted-2);
-      }
-
-      #homeIndices {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-      }
-
-      .index-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 10px 0;
-        border-bottom: 1px solid rgba(132,157,189,0.08);
-      }
-
-      .index-row:last-child { border-bottom: none; }
-
-      .index-name-wrap { display: flex; align-items: center; gap: 8px; }
-      .index-code { font-size: 0.68rem; color: var(--muted-2); }
-      .index-name { font-size: 0.86rem; font-weight: 600; }
-      .index-price { font-size: 1.0rem; font-weight: 700; }
-      .index-chg-wrap { text-align: right; }
-      .index-chg { font-size: 0.84rem; font-weight: 700; }
-      .index-change { font-size: 0.72rem; color: var(--muted); }
-
-      /* ── Hot sectors ── */
-      .sectors-card {
-        background: var(--panel);
-        border: 1px solid var(--line);
-        border-radius: 20px;
-        padding: 16px 22px;
-        box-shadow: var(--shadow-sm);
-      }
-
-      .sectors-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
+      .card-hd {
+        display: flex; justify-content: space-between; align-items: center;
         margin-bottom: 12px;
       }
 
-      .sectors-title {
-        font-size: 0.7rem;
-        font-weight: 700;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: var(--muted-2);
+      .card-hd-title {
+        font-size: 0.7rem; font-weight: 700;
+        letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted-2);
       }
 
-      .sectors-link {
-        font-size: 0.72rem;
-        color: var(--accent);
-        text-decoration: none;
-      }
+      .card-hd-link { font-size: 0.7rem; color: var(--accent); text-decoration: none; }
+      .card-hd-link:hover { text-decoration: underline; }
 
-      .sectors-link:hover { text-decoration: underline; }
-
-      #homeSectors {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 7px;
+      .index-row {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 9px 0; border-bottom: 1px solid rgba(132,157,189,0.08);
       }
+      .index-row:last-child { border-bottom: none; }
+
+      .index-left { display: flex; flex-direction: column; gap: 2px; }
+      .index-name { font-size: 0.88rem; font-weight: 700; }
+      .index-code { font-size: 0.68rem; color: var(--muted-2); }
+      .index-right { text-align: right; }
+      .index-price { font-size: 0.95rem; font-weight: 700; display: block; }
+      .index-chg { font-size: 0.78rem; font-weight: 600; }
+
+      #homeSectors { display: flex; flex-wrap: wrap; gap: 6px; }
 
       .sector-pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 5px 11px;
-        border-radius: 999px;
+        display: inline-flex; align-items: center; gap: 5px;
+        padding: 4px 10px; border-radius: 999px;
         border: 1px solid var(--line);
-        font-size: 0.78rem;
-        background: rgba(255,255,255,0.03);
-        text-decoration: none;
-        color: var(--text);
-        transition: background 0.12s;
+        font-size: 0.76rem; background: rgba(255,255,255,0.03);
+        text-decoration: none; color: var(--text);
+        transition: background 0.12s, border-color 0.12s;
       }
-
-      .sector-pill:hover { background: rgba(255,255,255,0.07); }
+      .sector-pill:hover { background: rgba(255,255,255,0.07); border-color: rgba(102,209,255,0.2); }
       .sector-pill-chg { font-weight: 700; }
       .sector-pill-leader { font-size: 0.68rem; color: var(--muted); }
 
-      /* ── Divider ── */
+      /* Skeleton */
+      .skeleton {
+        background: linear-gradient(90deg,
+          rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.09) 50%, rgba(255,255,255,0.04) 75%);
+        background-size: 200% 100%;
+        animation: shimmer 1.5s infinite; border-radius: 6px;
+      }
+      @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+      /* ══════════════════════════════════════
+         SECTION DIVIDER
+      ══════════════════════════════════════ */
       .section-divider {
-        border: none;
-        border-top: 1px solid var(--line);
-        margin: 0;
+        border: none; border-top: 1px solid var(--line);
       }
 
-      /* ── Features ── */
-      .features-section {
-        padding: 56px 0 48px;
+      .sec-header { margin-bottom: 32px; }
+      .sec-label {
+        font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em;
+        text-transform: uppercase; color: var(--muted-2); margin-bottom: 6px;
+      }
+      .sec-title { font-size: 1.7rem; font-weight: 800; letter-spacing: -0.02em; line-height: 1.2; }
+      .sec-sub { font-size: 0.92rem; color: var(--muted); line-height: 1.65; margin-top: 8px; }
+
+      /* ══════════════════════════════════════
+         SCENARIO CARDS
+      ══════════════════════════════════════ */
+      .scenarios-section { padding: 56px 0 48px; }
+
+      .scenarios-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
       }
 
-      .section-label {
-        font-size: 0.72rem;
-        font-weight: 700;
-        letter-spacing: 0.1em;
-        text-transform: uppercase;
-        color: var(--muted-2);
-        margin-bottom: 8px;
+      .scenario-card {
+        background: rgba(8, 19, 36, 0.88);
+        border: 1px solid var(--line); border-radius: var(--radius);
+        padding: 24px 22px;
+        text-decoration: none; color: var(--text);
+        display: flex; flex-direction: column; gap: 10px;
+        transition: border-color 0.18s, background 0.18s, transform 0.14s;
+        position: relative; overflow: hidden;
       }
 
-      .section-title {
-        font-size: 1.8rem;
-        font-weight: 800;
-        letter-spacing: -0.02em;
-        margin-bottom: 36px;
+      .scenario-card::before {
+        content: "";
+        position: absolute; inset: 0;
+        background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(102,209,255,0.06) 0%, transparent 70%);
+        opacity: 0; transition: opacity 0.2s;
       }
+
+      .scenario-card:hover {
+        border-color: rgba(102,209,255,0.32);
+        background: rgba(10, 23, 42, 0.95);
+        transform: translateY(-2px);
+      }
+
+      .scenario-card:hover::before { opacity: 1; }
+
+      .scenario-icon-wrap {
+        width: 42px; height: 42px; border-radius: 12px;
+        display: grid; place-items: center; font-size: 1.3rem;
+        flex-shrink: 0;
+      }
+
+      .scenario-tag {
+        display: inline-flex; align-items: center; gap: 4px;
+        font-size: 0.66rem; font-weight: 700; letter-spacing: 0.06em;
+        text-transform: uppercase; border-radius: 6px;
+        padding: 2px 7px; width: fit-content;
+      }
+
+      .tag-ai { background: rgba(102,209,255,0.1); color: var(--accent); border: 1px solid rgba(102,209,255,0.18); }
+      .tag-data { background: rgba(46,208,154,0.1); color: var(--bull); border: 1px solid rgba(46,208,154,0.2); }
+      .tag-hot { background: rgba(243,177,75,0.1); color: var(--warn); border: 1px solid rgba(243,177,75,0.18); }
+
+      .scenario-title { font-size: 1rem; font-weight: 700; }
+      .scenario-desc { font-size: 0.82rem; color: var(--muted); line-height: 1.65; flex: 1; }
+      .scenario-arrow { font-size: 0.78rem; color: var(--muted-2); transition: color 0.15s, transform 0.15s; display: inline-block; }
+      .scenario-card:hover .scenario-arrow { color: var(--accent); transform: translateX(3px); }
+
+      /* ══════════════════════════════════════
+         FEATURES
+      ══════════════════════════════════════ */
+      .features-section { padding: 0 0 56px; }
 
       .features-grid {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
-        gap: 16px;
+        gap: 14px;
       }
 
       .feature-card {
-        background: var(--panel);
-        border: 1px solid var(--line);
-        border-radius: 20px;
-        padding: 28px 24px;
-        box-shadow: var(--shadow-sm);
+        background: rgba(8, 19, 36, 0.88);
+        border: 1px solid var(--line); border-radius: var(--radius);
+        padding: 26px 22px; box-shadow: var(--shadow-sm);
         transition: border-color 0.2s;
       }
-
-      .feature-card:hover { border-color: rgba(102,209,255,0.3); }
+      .feature-card:hover { border-color: rgba(102,209,255,0.28); }
 
       .feature-icon {
-        width: 44px;
-        height: 44px;
-        border-radius: 12px;
-        display: grid;
-        place-items: center;
-        font-size: 1.3rem;
-        margin-bottom: 16px;
-        background: rgba(102,209,255,0.08);
-        border: 1px solid rgba(102,209,255,0.14);
+        width: 44px; height: 44px; border-radius: 12px;
+        display: grid; place-items: center; font-size: 1.3rem;
+        margin-bottom: 14px;
+        background: rgba(102,209,255,0.07);
+        border: 1px solid rgba(102,209,255,0.13);
       }
+      .feature-title { font-size: 0.96rem; font-weight: 700; margin-bottom: 8px; }
+      .feature-desc { font-size: 0.84rem; color: var(--muted); line-height: 1.7; }
 
-      .feature-title {
-        font-size: 1rem;
-        font-weight: 700;
-        margin-bottom: 8px;
-      }
-
-      .feature-desc {
-        font-size: 0.86rem;
-        color: var(--muted);
-        line-height: 1.7;
-      }
-
-      /* ── How it works ── */
-      .workflow-section {
-        padding: 0 0 56px;
-      }
+      /* ══════════════════════════════════════
+         HOW IT WORKS
+      ══════════════════════════════════════ */
+      .workflow-section { padding: 0 0 56px; }
 
       .workflow-steps {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 0;
-        background: var(--panel);
-        border: 1px solid var(--line);
-        border-radius: 20px;
-        overflow: hidden;
-        box-shadow: var(--shadow-sm);
+        display: grid; grid-template-columns: repeat(3, 1fr);
+        background: rgba(8, 19, 36, 0.92);
+        border: 1px solid var(--line); border-radius: 22px;
+        overflow: hidden; box-shadow: var(--shadow-sm);
       }
 
       .workflow-step {
         padding: 28px 24px;
-        border-right: 1px solid var(--line);
-        position: relative;
+        border-right: 1px solid var(--line); position: relative;
       }
-
       .workflow-step:last-child { border-right: none; }
 
       .step-num {
-        font-size: 2.4rem;
-        font-weight: 900;
-        color: rgba(102,209,255,0.15);
-        line-height: 1;
-        margin-bottom: 12px;
-        letter-spacing: -0.04em;
+        font-size: 2.6rem; font-weight: 900;
+        color: rgba(102,209,255,0.12); line-height: 1;
+        margin-bottom: 12px; letter-spacing: -0.04em;
       }
+      .step-title { font-size: 0.9rem; font-weight: 700; margin-bottom: 6px; }
+      .step-desc { font-size: 0.82rem; color: var(--muted); line-height: 1.65; }
 
-      .step-title {
-        font-size: 0.9rem;
-        font-weight: 700;
-        margin-bottom: 6px;
+      /* ══════════════════════════════════════
+         FAQ ACCORDION
+      ══════════════════════════════════════ */
+      .faq-section { padding: 0 0 56px; }
+
+      .faq-list { display: flex; flex-direction: column; gap: 8px; }
+
+      .faq-item {
+        background: rgba(8, 19, 36, 0.88);
+        border: 1px solid var(--line); border-radius: 14px;
+        overflow: hidden; transition: border-color 0.15s;
       }
+      .faq-item.open { border-color: rgba(102,209,255,0.22); }
 
-      .step-desc {
-        font-size: 0.82rem;
-        color: var(--muted);
-        line-height: 1.65;
+      .faq-question {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 16px 20px; cursor: pointer;
+        font-size: 0.9rem; font-weight: 600;
+        user-select: none; gap: 12px;
+        list-style: none;
       }
+      .faq-question::-webkit-details-marker { display: none; }
 
-      /* ── CTA band ── */
+      .faq-chevron {
+        flex-shrink: 0; color: var(--muted-2);
+        font-size: 0.8rem; transition: transform 0.2s;
+      }
+      .faq-item.open .faq-chevron { transform: rotate(180deg); color: var(--accent); }
+
+      .faq-answer {
+        max-height: 0; overflow: hidden;
+        transition: max-height 0.3s ease, padding 0.2s;
+        padding: 0 20px;
+        font-size: 0.85rem; color: var(--muted); line-height: 1.75;
+      }
+      .faq-item.open .faq-answer { max-height: 300px; padding: 0 20px 16px; }
+
+      /* ══════════════════════════════════════
+         CTA BAND
+      ══════════════════════════════════════ */
       .cta-section {
-        background: linear-gradient(135deg, rgba(102,209,255,0.08), rgba(36,163,135,0.08));
-        border: 1px solid rgba(102,209,255,0.14);
-        border-radius: 24px;
-        padding: 48px 40px;
-        text-align: center;
-        margin-bottom: 0;
+        background: linear-gradient(135deg, rgba(102,209,255,0.07), rgba(36,163,135,0.07));
+        border: 1px solid rgba(102,209,255,0.14); border-radius: 24px;
+        padding: 52px 40px; text-align: center; position: relative; overflow: hidden;
       }
 
-      .cta-title {
-        font-size: 1.6rem;
-        font-weight: 800;
-        margin-bottom: 10px;
-        letter-spacing: -0.02em;
+      .cta-section::before {
+        content: "";
+        position: absolute; top: -60px; left: 50%; transform: translateX(-50%);
+        width: 400px; height: 200px;
+        background: radial-gradient(ellipse, rgba(102,209,255,0.08) 0%, transparent 70%);
+        pointer-events: none;
       }
 
-      .cta-sub {
-        color: var(--muted);
-        font-size: 0.96rem;
-        margin-bottom: 24px;
-        line-height: 1.6;
-      }
+      .cta-title { font-size: 1.7rem; font-weight: 800; margin-bottom: 10px; letter-spacing: -0.02em; }
+      .cta-sub { color: var(--muted); font-size: 0.96rem; margin-bottom: 26px; line-height: 1.6; }
+      .cta-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
 
-      .cta-actions {
-        display: flex;
-        gap: 12px;
-        justify-content: center;
-        flex-wrap: wrap;
-      }
-
-      /* ── Loading skeleton ── */
-      .skeleton {
-        background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
-        background-size: 200% 100%;
-        animation: shimmer 1.4s infinite;
-        border-radius: 6px;
-        height: 1em;
-      }
-
-      @keyframes shimmer {
-        0% { background-position: 200% 0; }
-        100% { background-position: -200% 0; }
-      }
-
-      /* ── Footer ── */
+      /* ══════════════════════════════════════
+         FOOTER
+      ══════════════════════════════════════ */
       .footer {
         border-top: 1px solid var(--line);
-        padding: 24px 0;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 16px;
-        flex-wrap: wrap;
+        margin-top: 48px; padding: 28px 0;
+        display: grid; grid-template-columns: 1fr auto auto;
+        gap: 24px; align-items: start;
       }
 
-      .footer-brand {
-        font-size: 0.78rem;
-        font-weight: 700;
-        color: var(--muted);
-      }
-
-      .footer-links {
-        display: flex;
-        gap: 16px;
-      }
-
-      .footer-links a {
-        font-size: 0.76rem;
-        color: var(--muted-2);
-        text-decoration: none;
-      }
-
+      .footer-brand { font-size: 0.8rem; font-weight: 700; color: var(--muted); margin-bottom: 6px; }
+      .footer-disclaimer { font-size: 0.7rem; color: var(--muted-2); line-height: 1.65; max-width: 520px; }
+      .footer-links { display: flex; flex-direction: column; gap: 7px; }
+      .footer-links a { font-size: 0.76rem; color: var(--muted-2); text-decoration: none; }
       .footer-links a:hover { color: var(--muted); }
+      .footer-links-title { font-size: 0.7rem; font-weight: 700; color: var(--muted-2); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 4px; }
 
-      .footer-disclaimer {
-        font-size: 0.7rem;
-        color: var(--muted-2);
-        line-height: 1.6;
-        max-width: 600px;
+      /* ══════════════════════════════════════
+         RESPONSIVE
+      ══════════════════════════════════════ */
+      @media (max-width: 1100px) {
+        .scenarios-grid { grid-template-columns: 1fr 1fr; }
+        .features-grid { grid-template-columns: 1fr 1fr; }
       }
 
-      @media (max-width: 960px) {
-        .hero { grid-template-columns: 1fr; padding: 40px 0 36px; }
+      @media (max-width: 900px) {
+        .hero { grid-template-columns: 1fr; gap: 28px; padding: 40px 0 36px; }
         .hero-right { order: -1; }
-        .features-grid { grid-template-columns: 1fr; }
         .workflow-steps { grid-template-columns: 1fr; }
         .workflow-step { border-right: none; border-bottom: 1px solid var(--line); }
         .workflow-step:last-child { border-bottom: none; }
+        .footer { grid-template-columns: 1fr; gap: 16px; }
+        .footer-links { flex-direction: row; gap: 16px; }
         .topbar { padding: 0 16px; }
         .shell { width: calc(100% - 24px); }
+        .mkt-inner { padding: 0 16px; }
+      }
+
+      @media (max-width: 640px) {
+        .scenarios-grid { grid-template-columns: 1fr; }
+        .features-grid { grid-template-columns: 1fr; }
+        .page-nav a:not(.nav-cta):not(.active) { display: none; }
+        .brand-tag { display: none; }
+        .cta-section { padding: 36px 20px; }
       }
     </style>
   </head>
   <body>
 
-    <!-- ── Header ── -->
+    <!-- ══════ WELCOME MODAL ══════ -->
+    <div class="modal-overlay" id="welcomeModal">
+      <div class="modal-box">
+        <div class="modal-logo">
+          <div class="modal-mark">Sα</div>
+          <div class="modal-title-wrap">
+            <span class="modal-brand">SummerMax Alpha</span>
+            <span class="modal-tagline">A股智能分析平台</span>
+          </div>
+        </div>
+        <h2 class="modal-headline">AI + 实时行情<br>帮你做更好的 A 股决策</h2>
+        <p class="modal-desc">接入东方财富实时数据，GPT-5.5 基于真实 K 线、资金流向给出结构化分析。</p>
+        <div class="modal-benefits">
+          <div class="modal-benefit">
+            <div class="modal-benefit-icon">✓</div>
+            实时行情 + 主力资金流向同步分析
+          </div>
+          <div class="modal-benefit">
+            <div class="modal-benefit-icon">✓</div>
+            AI 直接根据今日 K 线数据回答，不是背诵训练数据
+          </div>
+          <div class="modal-benefit">
+            <div class="modal-benefit-icon">✓</div>
+            全市场 4800+ 只 A 股一键扫描选股
+          </div>
+        </div>
+        <div class="modal-actions">
+          <a href="auth.html?mode=register" class="modal-btn-primary">免费注册 →</a>
+          <div class="modal-divider">或</div>
+          <a href="auth.html?mode=login" class="modal-btn-secondary">已有账号，登录</a>
+        </div>
+        <a href="#" class="modal-skip" id="modalSkipBtn">先看看，稍后再登录</a>
+      </div>
+    </div>
+
+    <!-- ══════ HEADER ══════ -->
     <header class="topbar">
       <div class="brand">
         <div class="brand-mark">Sα</div>
         <span class="brand-name">SummerMax Alpha</span>
-        <span class="brand-tag">A股分析平台</span>
+        <span class="brand-tag">A股分析</span>
       </div>
       <div class="topbar-spacer"></div>
       <nav class="page-nav">
@@ -578,51 +680,71 @@
         <a href="scan.html">市场扫描</a>
         <a href="chat.html">AI 分析师</a>
         <a href="settings.html">设置</a>
+        <a href="auth.html" class="nav-auth-btn" id="topbarAuthLink">登录</a>
         <a href="workspace.html" class="nav-cta">进入工作台 →</a>
       </nav>
     </header>
 
+    <!-- ══════ MARKET BAR ══════ -->
+    <div class="market-bar">
+      <div class="mkt-inner" id="marketBarInner">
+        <span class="mkt-loading">正在获取市场数据…</span>
+      </div>
+    </div>
+
     <div class="shell">
 
-      <!-- ── Hero ── -->
+      <!-- ══════ HERO ══════ -->
       <section class="hero">
         <div class="hero-left">
           <div class="hero-eyebrow">
             <span class="hero-eyebrow-dot"></span>
             实时数据 × GPT-5.5 结构化分析
           </div>
-          <h1>专为 A 股设计的<br><em>智能分析工作台</em></h1>
+          <h1>不再靠感觉炒股<br><em>让 AI 看着行情说话</em></h1>
           <p class="hero-sub">
-            不再让 AI 凭空回答"应该买吗"。SummerMax Alpha 把东方财富实时行情直接接入 GPT-5.5，让 AI 看着真实的 K 线、资金流向和技术指标给出判断。
+            SummerMax Alpha 把东方财富实时行情直接接入 GPT-5.5——K线、资金流向、技术指标全部喂给 AI，再告诉你应不应该买。
           </p>
+          <div class="hero-stats">
+            <div class="hero-stat">
+              <span class="hero-stat-num">4800+</span>
+              <span class="hero-stat-label">全市场 A 股</span>
+            </div>
+            <div class="hero-stat">
+              <span class="hero-stat-num" id="heroUpCount">--</span>
+              <span class="hero-stat-label">今日上涨</span>
+            </div>
+            <div class="hero-stat">
+              <span class="hero-stat-num">实时</span>
+              <span class="hero-stat-label">行情延迟</span>
+            </div>
+          </div>
           <div class="hero-actions">
             <a href="workspace.html" class="btn-primary">进入分析工作台 →</a>
-            <a href="scan.html" class="btn-secondary">浏览行业板块</a>
+            <a href="chat.html" class="btn-secondary">问 AI 推荐今日好股</a>
           </div>
         </div>
 
         <div class="hero-right">
-          <!-- Live indices -->
-          <div class="indices-card">
-            <div class="indices-header">
-              <span class="indices-title">实时指数</span>
-              <span class="indices-time" id="overviewTime">--</span>
+          <div class="data-card">
+            <div class="card-hd">
+              <span class="card-hd-title">实时指数</span>
+              <span style="font-size:0.68rem;color:var(--muted-2)" id="overviewTime">--</span>
             </div>
             <div id="homeIndices">
-              <div class="index-row"><div class="skeleton" style="width:80px"></div><div class="skeleton" style="width:60px"></div></div>
-              <div class="index-row"><div class="skeleton" style="width:80px"></div><div class="skeleton" style="width:60px"></div></div>
-              <div class="index-row"><div class="skeleton" style="width:80px"></div><div class="skeleton" style="width:60px"></div></div>
+              <div class="index-row"><div class="skeleton" style="width:80px;height:14px"></div><div class="skeleton" style="width:60px;height:14px"></div></div>
+              <div class="index-row"><div class="skeleton" style="width:80px;height:14px"></div><div class="skeleton" style="width:60px;height:14px"></div></div>
+              <div class="index-row"><div class="skeleton" style="width:80px;height:14px"></div><div class="skeleton" style="width:60px;height:14px"></div></div>
             </div>
           </div>
 
-          <!-- Hot sectors -->
-          <div class="sectors-card">
-            <div class="sectors-header">
-              <span class="sectors-title">今日强势板块</span>
-              <a href="scan.html" class="sectors-link">查看全部 →</a>
+          <div class="data-card">
+            <div class="card-hd">
+              <span class="card-hd-title">今日强势板块</span>
+              <a href="scan.html" class="card-hd-link">查看全部 →</a>
             </div>
             <div id="homeSectors">
-              <div class="skeleton" style="width:120px;height:28px;border-radius:999px"></div>
+              <div class="skeleton" style="width:110px;height:26px;border-radius:999px"></div>
             </div>
           </div>
         </div>
@@ -630,10 +752,74 @@
 
       <hr class="section-divider" />
 
-      <!-- ── Features ── -->
-      <section class="features-section">
-        <p class="section-label">核心能力</p>
-        <h2 class="section-title">专业工具，小白也能用</h2>
+      <!-- ══════ SCENARIOS ══════ -->
+      <section class="scenarios-section">
+        <div class="sec-header">
+          <p class="sec-label">使用场景</p>
+          <h2 class="sec-title">你今天想做什么？</h2>
+          <p class="sec-sub">从最常见的六种操作场景快速进入，AI 自动加载相关数据。</p>
+        </div>
+        <div class="scenarios-grid">
+
+          <a href="chat.html" class="scenario-card" data-q="现在是尾盘时段，给我3只今日可以尾盘买入、明天大概率涨的票，每只给出买入区间、T+1目标价和止损价位">
+            <div class="scenario-icon-wrap" style="background:rgba(102,209,255,0.1);border:1px solid rgba(102,209,255,0.18)">⚡</div>
+            <div class="scenario-tag tag-ai">AI 推荐</div>
+            <div class="scenario-title">今日尾盘买入精选</div>
+            <div class="scenario-desc">AI 从全市场实时数据中筛选尾盘机会，直接给出买入价区间、T+1目标价和止损位。</div>
+            <span class="scenario-arrow">立即筛选 →</span>
+          </a>
+
+          <a href="scan.html" class="scenario-card">
+            <div class="scenario-icon-wrap" style="background:rgba(46,208,154,0.1);border:1px solid rgba(46,208,154,0.2)">🏭</div>
+            <div class="scenario-tag tag-data">板块扫描</div>
+            <div class="scenario-title">选强势板块入场</div>
+            <div class="scenario-desc">从今日涨幅最高的行业板块出发，逐一分析龙头个股。跟着板块买，不踩个股陷阱。</div>
+            <span class="scenario-arrow">看今日板块 →</span>
+          </a>
+
+          <a href="workspace.html" class="scenario-card">
+            <div class="scenario-icon-wrap" style="background:rgba(102,209,255,0.08);border:1px solid rgba(102,209,255,0.14)">📊</div>
+            <div class="scenario-tag tag-data">深度分析</div>
+            <div class="scenario-title">分析特定一只股票</div>
+            <div class="scenario-desc">输入股票代码，AI 立即调取 K 线、资金流向、技术指标，给出多空判断和关键价位。</div>
+            <span class="scenario-arrow">进入工作台 →</span>
+          </a>
+
+          <a href="chat.html" class="scenario-card" data-q="根据苏紫叶理论，今日A股里短中线大概率大涨、位置不高、逻辑硬有产业支撑的是哪几只？每只给买入区间、T+2目标价和止损位">
+            <div class="scenario-icon-wrap" style="background:rgba(243,177,75,0.1);border:1px solid rgba(243,177,75,0.18)">🚀</div>
+            <div class="scenario-tag tag-hot">黑马挖掘</div>
+            <div class="scenario-title">挖今日潜力暴涨黑马</div>
+            <div class="scenario-desc">量比 ≥ 2、换手 ≥ 5%、涨幅在合理区间，AI 从全市场4800只里筛出最值得关注的潜力股。</div>
+            <span class="scenario-arrow">AI 来选股 →</span>
+          </a>
+
+          <a href="chat.html" class="scenario-card" data-q="今天大盘整体走势、上涨下跌比例、主力资金方向，今天适合进攻还是防守？该买什么类型的票？">
+            <div class="scenario-icon-wrap" style="background:rgba(36,163,135,0.1);border:1px solid rgba(36,163,135,0.2)">🌐</div>
+            <div class="scenario-tag tag-data">大盘研判</div>
+            <div class="scenario-title">今日大盘应该进攻还是防守</div>
+            <div class="scenario-desc">AI 分析当日涨跌比、主力资金动向、板块分化，判断今天的市场情绪该激进还是保守。</div>
+            <span class="scenario-arrow">看大盘判断 →</span>
+          </a>
+
+          <a href="chat.html" class="scenario-card" data-q="给我这周完整的操作计划：推荐2-3只这周买入的标的（含买入价、目标价、止损位）；有没有潜力暴涨的黑马？要具体可执行的方案">
+            <div class="scenario-icon-wrap" style="background:rgba(102,209,255,0.08);border:1px solid rgba(102,209,255,0.14)">📋</div>
+            <div class="scenario-tag tag-ai">AI 规划</div>
+            <div class="scenario-title">本周完整操作计划</div>
+            <div class="scenario-desc">AI 给出本周 2-3 只推荐标的，含买入价、目标价、止损位，完整可执行，一目了然。</div>
+            <span class="scenario-arrow">生成计划 →</span>
+          </a>
+
+        </div>
+      </section>
+
+      <hr class="section-divider" />
+
+      <!-- ══════ FEATURES ══════ -->
+      <section class="features-section" style="padding-top:52px">
+        <div class="sec-header">
+          <p class="sec-label">核心能力</p>
+          <h2 class="sec-title">专业级工具，人人都能用</h2>
+        </div>
         <div class="features-grid">
           <div class="feature-card">
             <div class="feature-icon">📡</div>
@@ -648,12 +834,7 @@
           <div class="feature-card">
             <div class="feature-icon">💬</div>
             <h3 class="feature-title">实时 AI 对话</h3>
-            <p class="feature-desc">直接在对话框问"比亚迪现在该买吗"，系统自动拉取实时行情再回答，不是背诵训练数据，是基于今天的价格。</p>
-          </div>
-          <div class="feature-card">
-            <div class="feature-icon">🏭</div>
-            <h3 class="feature-title">行业板块入口</h3>
-            <p class="feature-desc">不需要记股票代码。从新能源、AI、消费、半导体等28个行业板块里选，点击任意个股直接进入分析。</p>
+            <p class="feature-desc">直接问"比亚迪现在该买吗"，系统自动拉取实时行情再回答，不是背诵训练数据，是基于今天的价格。</p>
           </div>
           <div class="feature-card">
             <div class="feature-icon">📊</div>
@@ -662,61 +843,241 @@
           </div>
           <div class="feature-card">
             <div class="feature-icon">⭐</div>
-            <h3 class="feature-title">关注列表监控</h3>
-            <p class="feature-desc">把感兴趣的股票加入关注列表，一键批量刷新所有持仓或候选股的最新价格、涨跌幅和 AI 偏向。</p>
+            <h3 class="feature-title">全市场实时矩阵</h3>
+            <p class="feature-desc">4800+ 只 A 股同屏显示，按涨跌幅、成交额、换手率、量比一键排序，今日机会全貌一览无余。</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">💼</div>
+            <h3 class="feature-title">持仓盈亏跟踪</h3>
+            <p class="feature-desc">记录买入价和手数，系统自动同步最新价格计算实时盈亏百分比，随时掌握持仓动态。</p>
           </div>
         </div>
       </section>
 
-      <!-- ── How it works ── -->
+      <!-- ══════ HOW IT WORKS ══════ -->
       <section class="workflow-section">
-        <p class="section-label">使用流程</p>
-        <h2 class="section-title" style="margin-bottom:24px">三步开始分析</h2>
+        <div class="sec-header">
+          <p class="sec-label">使用流程</p>
+          <h2 class="sec-title">三步开始分析</h2>
+        </div>
         <div class="workflow-steps">
           <div class="workflow-step">
             <div class="step-num">01</div>
-            <h3 class="step-title">选择行业板块</h3>
-            <p class="step-desc">进入市场扫描页，从涨幅靠前的行业板块开始。点击新能源、AI、消费等板块，查看今日强势个股列表。</p>
+            <h3 class="step-title">从板块切入，选方向</h3>
+            <p class="step-desc">进入市场扫描页，从今日涨幅靠前的行业板块开始。点击板块进入个股列表，快速锁定今日强势赛道。</p>
           </div>
           <div class="workflow-step">
             <div class="step-num">02</div>
-            <h3 class="step-title">查看 K 线与技术指标</h3>
-            <p class="step-desc">点击任意个股进入工作台，自动加载 K 线图、均线、RSI、MACD、资金流向，以及 AI 规则引擎信号。</p>
+            <h3 class="step-title">看 K 线 + 技术指标</h3>
+            <p class="step-desc">点击个股进入工作台，自动加载 K 线图、均线、RSI、资金流向，以及 AI 规则引擎信号，几秒内看清结构。</p>
           </div>
           <div class="workflow-step">
             <div class="step-num">03</div>
-            <h3 class="step-title">问 AI 应该怎么做</h3>
-            <p class="step-desc">在右侧 AI 对话框直接输入"这只股票现在该买吗"，GPT-5.5 结合实时数据回答，支持多轮追问。</p>
+            <h3 class="step-title">问 AI，得出操作决策</h3>
+            <p class="step-desc">在 AI 对话框直接问"这只应该买吗"，GPT-5.5 结合实时数据回答。支持追问、换票对比、给出具体价位。</p>
           </div>
         </div>
       </section>
 
-      <!-- ── CTA ── -->
-      <section class="cta-section">
-        <h2 class="cta-title">准备好了吗？</h2>
-        <p class="cta-sub">输入任意 A 股名称，几秒内得到 AI 分析结果。</p>
-        <div class="cta-actions">
-          <a href="workspace.html" class="btn-primary">进入分析工作台 →</a>
-          <a href="scan.html" class="btn-secondary">先看行业板块</a>
+      <!-- ══════ FAQ ══════ -->
+      <section class="faq-section">
+        <div class="sec-header">
+          <p class="sec-label">常见问题</p>
+          <h2 class="sec-title">你可能想知道的</h2>
+        </div>
+        <div class="faq-list">
+          <div class="faq-item">
+            <div class="faq-question" onclick="toggleFaq(this)">
+              AI 分析结果可信吗？是 AI 胡说还是真的看了数据？
+              <span class="faq-chevron">▼</span>
+            </div>
+            <div class="faq-answer">
+              AI 不是凭空生成答案。每次分析前，系统会先从东方财富 API 拉取该股票的实时价格、K 线历史、技术指标（MA5/MA20/RSI/MACD）和主力资金流向，然后把这些数据结构化后一起发给 GPT-5.5。AI 看的是今天实际数据，而不是训练知识。当然，任何分析都有局限性，请结合自己判断使用。
+            </div>
+          </div>
+          <div class="faq-item">
+            <div class="faq-question" onclick="toggleFaq(this)">
+              数据是实时的吗？有多少延迟？
+              <span class="faq-chevron">▼</span>
+            </div>
+            <div class="faq-answer">
+              行情数据通过东方财富和新浪财经接口获取，A 股交易日内实时更新，延迟通常在 3 秒以内。资金流向数据（主力净流入/大单/超大单）同样来源于东方财富实时接口。指数数据刷新间隔为 2 分钟。非交易时段显示最后收盘数据。
+            </div>
+          </div>
+          <div class="faq-item">
+            <div class="faq-question" onclick="toggleFaq(this)">
+              免费使用还是需要付费？
+              <span class="faq-chevron">▼</span>
+            </div>
+            <div class="faq-answer">
+              基础功能（K 线图、技术指标、市场扫描、全市场行情矩阵）完全免费。AI 分析（GPT-5.5 结构化分析 + AI 对话）需要后端配置 API Key，可以使用自己的 OpenAI 密钥，或联系我们获取访问权限。
+            </div>
+          </div>
+          <div class="faq-item">
+            <div class="faq-question" onclick="toggleFaq(this)">
+              为什么首次加载有时要等 20-30 秒？
+              <span class="faq-chevron">▼</span>
+            </div>
+            <div class="faq-answer">
+              后端部署在 Render 免费实例上，15 分钟无访问后会自动休眠。首次访问时需要唤醒服务器（约 20-30 秒），之后访问速度正常。数据缓存预热完成后，大多数请求可以在 1-2 秒内响应。
+            </div>
+          </div>
+          <div class="faq-item">
+            <div class="faq-question" onclick="toggleFaq(this)">
+              AI 给的买卖建议一定要跟吗？
+              <span class="faq-chevron">▼</span>
+            </div>
+            <div class="faq-answer">
+              绝对不要盲目跟单。本平台所有 AI 分析内容仅供参考，不构成任何投资建议。股市有风险，入市需谨慎。AI 的作用是帮你更快看清技术面和资金面，最终决策权在你自己。建议结合基本面、宏观环境和自身风险承受能力综合判断。
+            </div>
+          </div>
         </div>
       </section>
 
-      <!-- ── Footer ── -->
-      <footer class="footer" style="margin-top:40px">
+      <!-- ══════ CTA ══════ -->
+      <section class="cta-section">
+        <h2 class="cta-title">准备好了吗？</h2>
+        <p class="cta-sub">输入任意 A 股名称，几秒内得到 AI 分析结果。<br>无需注册即可体验核心功能。</p>
+        <div class="cta-actions">
+          <a href="workspace.html" class="btn-primary">立即进入工作台 →</a>
+          <a href="chat.html" class="btn-secondary">先问 AI 推荐今日好股</a>
+        </div>
+      </section>
+
+      <!-- ══════ FOOTER ══════ -->
+      <footer class="footer">
         <div>
           <p class="footer-brand">SummerMax Alpha · A股智能分析平台</p>
           <p class="footer-disclaimer">
-            本平台所有分析内容仅供参考，不构成任何投资建议。股市有风险，入市需谨慎。
+            本平台所有分析内容仅供参考，不构成任何投资建议。股市有风险，入市需谨慎。<br>
+            行情数据来源于东方财富、新浪财经等公开接口，仅用于辅助分析展示。
           </p>
         </div>
-        <div class="footer-links">
-          <a href="workspace.html">工作台</a>
-          <a href="scan.html">市场扫描</a>
+        <div>
+          <p class="footer-links-title">功能入口</p>
+          <div class="footer-links">
+            <a href="workspace.html">分析工作台</a>
+            <a href="scan.html">市场扫描</a>
+            <a href="chat.html">AI 分析师</a>
+            <a href="settings.html">设置</a>
+          </div>
+        </div>
+        <div>
+          <p class="footer-links-title">账户</p>
+          <div class="footer-links">
+            <a href="auth.html?mode=login">登录</a>
+            <a href="auth.html?mode=register">注册</a>
+          </div>
         </div>
       </footer>
 
     </div>
 
     <script src="home.js"></script>
+    <script>
+      // ── Welcome modal ────────────────────────────────────────────────────────
+      (function() {
+        const SEEN_KEY = "summermax-alpha-seen-welcome";
+        const TOKEN_KEY = "summermax-token";
+        const modal = document.getElementById("welcomeModal");
+        const skipBtn = document.getElementById("modalSkipBtn");
+
+        // Don't show if already seen or already logged in
+        if (localStorage.getItem(SEEN_KEY) || localStorage.getItem(TOKEN_KEY)) {
+          modal.classList.add("hidden");
+        }
+
+        skipBtn.addEventListener("click", (e) => {
+          e.preventDefault();
+          localStorage.setItem(SEEN_KEY, "1");
+          modal.classList.add("hidden");
+        });
+
+        // Also dismiss on overlay click
+        modal.addEventListener("click", (e) => {
+          if (e.target === modal) {
+            localStorage.setItem(SEEN_KEY, "1");
+            modal.classList.add("hidden");
+          }
+        });
+
+        // Update topbar auth link if logged in
+        const email = localStorage.getItem("summermax-email");
+        if (email || localStorage.getItem(TOKEN_KEY)) {
+          const link = document.getElementById("topbarAuthLink");
+          if (link) { link.textContent = "账户"; link.href = "settings.html"; }
+        }
+      })();
+
+      // ── FAQ accordion ────────────────────────────────────────────────────────
+      function toggleFaq(questionEl) {
+        const item = questionEl.closest(".faq-item");
+        const isOpen = item.classList.contains("open");
+        // Close all
+        document.querySelectorAll(".faq-item.open").forEach(el => el.classList.remove("open"));
+        // Toggle current
+        if (!isOpen) item.classList.add("open");
+      }
+
+      // ── Scenario cards: pass preset question to chat.html ───────────────────
+      document.querySelectorAll(".scenario-card[data-q]").forEach(card => {
+        card.addEventListener("click", (e) => {
+          const q = card.dataset.q;
+          if (q) {
+            e.preventDefault();
+            sessionStorage.setItem("summermax-alpha-prefill-q", q);
+            window.location.href = card.href;
+          }
+        });
+      });
+
+      // ── Market bar ───────────────────────────────────────────────────────────
+      (function loadMarketBar() {
+        const DEFAULT_API_BASE = "https://summermax-alpha-api.onrender.com";
+        const apiBase = (localStorage.getItem("summermax-alpha-api-base") || DEFAULT_API_BASE).trim().replace(/\/+$/, "");
+        const barEl = document.getElementById("marketBarInner");
+        const heroUpEl = document.getElementById("heroUpCount");
+
+        fetch(`${apiBase}/market/overview`)
+          .then(r => r.json())
+          .then(data => {
+            const indices = Array.isArray(data.indices) ? data.indices : [];
+            if (!indices.length) return;
+
+            function chg(v) { const n=Number(v); return Number.isNaN(n)?"":n>=0?"up":"down"; }
+            function chgTxt(v) { const n=Number(v); if(Number.isNaN(n))return"--"; return(n>=0?"+":"")+n.toFixed(2)+"%"; }
+
+            const idxHtml = indices.map(idx =>
+              `<div class="mkt-idx">
+                <span class="mkt-idx-name">${idx.name||idx.code}</span>
+                <span class="mkt-idx-price ${chg(idx.change_percent)}">${Number(idx.price||0).toFixed(2)}</span>
+                <span class="${chg(idx.change_percent)}">${chgTxt(idx.change_percent)}</span>
+              </div>`
+            ).join('<div class="mkt-divider"></div>');
+
+            const sectors = Array.isArray(data.hot_sectors) ? data.hot_sectors.slice(0,3) : [];
+            const secHtml = sectors.length
+              ? '<div class="mkt-divider"></div><span class="mkt-loading" style="font-style:normal;letter-spacing:0.04em">热板块</span>'
+                + sectors.map(s=>`<span style="font-size:0.72rem;color:var(--muted-2)">${s.name}<span class="${chg(s.change_percent)}" style="margin-left:3px">${chgTxt(s.change_percent)}</span></span>`).join('<div class="mkt-divider"></div>')
+              : "";
+
+            barEl.innerHTML = idxHtml + secHtml;
+          })
+          .catch(() => {
+            barEl.innerHTML = `<span class="mkt-loading">市场数据暂不可用（服务启动中）</span>`;
+          });
+
+        // Fetch market stats for hero up-count
+        fetch(`${apiBase}/market/stocks`)
+          .then(r => r.json())
+          .then(data => {
+            const stocks = Array.isArray(data.stocks) ? data.stocks : [];
+            if (!stocks.length) return;
+            const up = stocks.filter(s => Number(s.change_percent) > 0).length;
+            if (heroUpEl) heroUpEl.textContent = up.toLocaleString();
+          })
+          .catch(() => {});
+      })();
+    </script>
   </body>
 </html>

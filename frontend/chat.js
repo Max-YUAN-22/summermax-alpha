@@ -921,6 +921,26 @@ init();
 
 setInterval(() => { fetch(`${getApiBase()}/ping`).catch(() => {}); }, 10 * 60 * 1000);
 
+// ── Scenario prefill: auto-send question passed from index.html scenario cards ──
+(function() {
+  const q = sessionStorage.getItem("summermax-alpha-prefill-q");
+  if (!q) return;
+  sessionStorage.removeItem("summermax-alpha-prefill-q");
+  chatInputEl.value = q;
+  autoResize();
+  // Wait for market data to load (sendBtn gets enabled), then auto-send
+  const observer = new MutationObserver(() => {
+    if (!sendBtnEl.disabled && chatInputEl.value) {
+      observer.disconnect();
+      const text = chatInputEl.value.trim();
+      chatInputEl.value = "";
+      autoResize();
+      sendMessage(text);
+    }
+  });
+  observer.observe(sendBtnEl, { attributes: true, attributeFilter: ["disabled"] });
+})();
+
 // ── Mobile panel toggle ────────────────────────────────────────────────────────
 
 function switchMobilePanel(panel) {
