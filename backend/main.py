@@ -2749,6 +2749,220 @@ _CACHE_LOCK = threading.Lock()
 _FETCH_IN_PROGRESS = threading.Event()
 
 
+def _apply_cross_sectional_scoring(stocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Qlib-style cross-sectional 4-agent scoring.
+    Replaces the raw quality_score with percentile-ranked, agent-weighted scores.
+    """
+    if len(stocks) < 50:
+        return stocks
+
+    df = pd.DataFrame(stocks)
+
+    # ── Agent 1: Momentum ─────────────────────────────────────────────────────
+    # reward 2-7% gain + strong volume ratio
+    chg = df["change_percent"].clip(-10, 10)
+    volr = df["vol_ratio"].clip(0, 10)
+    chg_factor = chg.clip(0, 7) / 7          # peaks at 7%, no credit for >7%
+    volr_factor = (volr - 1).clip(0, 4) / 4  # better when vol_ratio 1-5
+    momentum = (chg_factor * 0.5 + volr_factor * 0.5).clip(0, 1)
+    momentum[df["change_percent"] > 8.5] *= 0.1   # near limit-up: gap risk
+    momentum[df["change_percent"] < 0]   *= 0.2   # declining: weak
+    df["agent_momentum"] = momentum
+
+    # ── Agent 2: Liquidity ────────────────────────────────────────────────────
+    # cross-sectional rank of amount + sweet-spot turnover
+    amount_rank = df["amount"].rank(pct=True, na_option="bottom")
+    turn = df["turnover_rate"].clip(0, 30)
+    turn_score = (1 - ((turn - 9).abs() / 9)).clip(0, 1)  # peaks at 9%
+    liquidity = (amount_rank * 0.6 + turn_score * 0.4).clip(0, 1)
+    liquidity[df["turnover_rate"] > 20] *= 0.5             # overheating
+    df["agent_liquidity"] = liquidity
+
+    # ── Agent 3: Fundamental (from snapshot pe/pb in market data) ─────────────
+    df["agent_fundamental"] = 0.5  # neutral default when no PE/PB
+    pe = df.get("pe_ratio", pd.Series(dtype=float))
+    pb = df.get("pb_ratio", pd.Series(dtype=float))
+    if "pe_ratio" in df.columns and "pb_ratio" in df.columns:
+        valid = (df["pe_ratio"] > 3) & (df["pe_ratio"] < 80) & \
+                (df["pb_ratio"] > 0.3) & (df["pb_ratio"] < 8)
+        if valid.sum() > 10:
+            pe_rank = df.loc[valid, "pe_ratio"].rank(pct=True, ascending=False)
+            pb_rank = df.loc[valid, "pb_ratio"].rank(pct=True, ascending=False)
+            df.loc[valid, "agent_fundamental"] = (pe_rank * 0.5 + pb_rank * 0.5)
+
+    # ── Agent 4: Risk penalty ─────────────────────────────────────────────────
+    risk = pd.Series(0.0, index=df.index)
+    risk[(df["change_percent"] > 8.5)]  += 0.5   # near limit-up
+    risk[(df["vol_ratio"] > 8)]         += 0.3   # extreme volume spike
+    risk[(df["turnover_rate"] > 25)]    += 0.3   # severely overheating
+    risk[(df["change_percent"] < -5)]   += 0.3   # sharp decline
+    risk[(df["change_percent"] > 6) & (df["change_percent"] <= 8.5)] += 0.15
+    df["agent_risk"] = risk.clip(0, 0.8)
+
+    # ── Fusion: weighted combination ──────────────────────────────────────────
+    df["quality_score"] = (
+        0.35 * df["agent_momentum"] +
+        0.30 * df["agent_liquidity"] +
+        0.20 * df["agent_fundamental"] -
+        0.15 * df["agent_risk"]
+    ).clip(0, 1).round(4)
+
+    return df.to_dict("records")
+
+
+def score_stock_multiagent(
+    code: str,
+    snapshot: Dict[str, Any],
+    fundamentals: Dict[str, Any],
+    fund_flow: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Run 4-agent structured scoring on a single stock and return fused result."""
+    indicators = snapshot.get("indicators", {})
+    realtime   = snapshot.get("realtime", {})
+    scorecard  = snapshot.get("scorecard", {})
+
+    # ── Agent 1: Market (Technical) ───────────────────────────────────────────
+    m_score = 0.0
+    m_signals: List[str] = []
+    rsi  = indicators.get("rsi14", 50) or 50
+    mdiff = indicators.get("macd_diff", 0) or 0
+    mdea  = indicators.get("macd_dea", 0) or 0
+    ma5   = indicators.get("ma5", 0) or 0
+    ma20  = indicators.get("ma20", 0) or 0
+    price = realtime.get("price", 0) or 0
+
+    if 40 <= rsi <= 70:
+        m_score += 0.35
+        m_signals.append(f"RSI={rsi:.1f}（健康动量区间）")
+    elif rsi < 40:
+        m_score += 0.1
+        m_signals.append(f"RSI={rsi:.1f}（超卖，关注反弹）")
+    else:
+        m_signals.append(f"RSI={rsi:.1f}（⚠️超买）")
+
+    if mdiff > mdea:
+        m_score += 0.3
+        m_signals.append("MACD 金叉多头")
+    else:
+        m_signals.append("MACD 死叉/空头")
+
+    if price > ma5 > ma20:
+        m_score += 0.35
+        m_signals.append("价格>MA5>MA20 多头排列")
+    elif price > ma20:
+        m_score += 0.2
+        m_signals.append("价格在MA20上方")
+    else:
+        m_signals.append("价格低于MA20（弱势）")
+
+    m_score = min(1.0, m_score)
+
+    # ── Agent 2: Fundamental ──────────────────────────────────────────────────
+    f_score = 0.5  # neutral when no data
+    f_signals: List[str] = []
+    if not fundamentals.get("error"):
+        f_score = 0.0
+        roe    = fundamentals.get("roe")
+        pe     = fundamentals.get("pe")
+        pb     = fundamentals.get("pb")
+        pgrow  = fundamentals.get("profit_growth")
+        debt   = fundamentals.get("debt_ratio")
+        gross  = fundamentals.get("gross_margin")
+
+        if roe is not None:
+            if roe > 15:   f_score += 0.30; f_signals.append(f"ROE={roe:.1f}%（优质）")
+            elif roe > 8:  f_score += 0.15; f_signals.append(f"ROE={roe:.1f}%（一般）")
+            else:           f_signals.append(f"ROE={roe:.1f}%（偏低）")
+
+        if pe is not None and pe > 0:
+            if pe < 20:    f_score += 0.25; f_signals.append(f"PE={pe:.1f}（低估值）")
+            elif pe < 40:  f_score += 0.10; f_signals.append(f"PE={pe:.1f}（合理）")
+            else:           f_signals.append(f"PE={pe:.1f}（⚠️高估）")
+
+        if pb is not None and pb > 0:
+            if pb < 2:     f_score += 0.15; f_signals.append(f"PB={pb:.1f}（低估值）")
+            elif pb < 4:   f_score += 0.05; f_signals.append(f"PB={pb:.1f}（合理）")
+            else:           f_signals.append(f"PB={pb:.1f}（偏高）")
+
+        if pgrow is not None:
+            if pgrow > 20: f_score += 0.20; f_signals.append(f"净利增速={pgrow:.1f}%（高增长）")
+            elif pgrow > 0: f_score += 0.10; f_signals.append(f"净利增速={pgrow:.1f}%（正增长）")
+            else:           f_signals.append(f"净利增速={pgrow:.1f}%（⚠️负增长）")
+
+        if debt is not None:
+            if debt < 40:  f_score += 0.10; f_signals.append(f"负债率={debt:.1f}%（健康）")
+            elif debt > 70: f_score -= 0.10; f_signals.append(f"负债率={debt:.1f}%（⚠️偏高）")
+
+        f_score = max(0, min(1.0, f_score))
+
+    # ── Agent 3: Sentiment (fund flow + volume) ────────────────────────────────
+    s_score = (scorecard.get("components", {}).get("flow", 50)) / 100
+    s_signals: List[str] = []
+    if not fund_flow.get("error"):
+        lat = fund_flow.get("latest", {})
+        ratio = lat.get("main_net_ratio")
+        inflow = lat.get("main_net_inflow")
+        if ratio is not None:
+            if ratio > 5:
+                s_score = min(1, s_score + 0.20)
+                s_signals.append(f"主力净流入占比{ratio:.1f}%（积极进场）")
+            elif ratio < -5:
+                s_score = max(0, s_score - 0.20)
+                s_signals.append(f"主力净流出{abs(ratio):.1f}%（⚠️出逃）")
+        if inflow is not None:
+            s_signals.append(f"主力净流入{inflow/1e4:.0f}万元")
+    turn = realtime.get("turnover_rate") or 0
+    volr = indicators.get("volume_ratio") or 0
+    if 3 <= turn <= 15: s_signals.append(f"换手率{turn:.1f}%（适中）")
+    if volr >= 1.5:     s_signals.append(f"量比{volr:.1f}（放量）")
+
+    # ── Agent 4: Risk ─────────────────────────────────────────────────────────
+    r_penalty = 0.0
+    r_signals: List[str] = []
+    chg = realtime.get("change_percent", 0) or 0
+
+    if rsi > 75:
+        r_penalty += 0.40; r_signals.append(f"RSI={rsi:.1f}（严重超买，回调风险高）")
+    if chg > 8.5:
+        r_penalty += 0.50; r_signals.append("接近涨停，追高风险极高")
+    elif chg > 6:
+        r_penalty += 0.20; r_signals.append(f"今日已涨{chg:.1f}%，注意追高")
+    if chg < -5:
+        r_penalty += 0.30; r_signals.append(f"今日跌{abs(chg):.1f}%，趋势可能破坏")
+    name = snapshot.get("name", "")
+    if name.startswith("ST") or name.startswith("*ST"):
+        r_penalty += 0.80; r_signals.append("⚠️ST股，严禁操作")
+    r_penalty = min(0.8, r_penalty)
+
+    # ── Fusion ────────────────────────────────────────────────────────────────
+    final = max(0, min(1, round(
+        0.35 * m_score +
+        0.30 * f_score +
+        0.20 * s_score -
+        0.15 * r_penalty,
+        3,
+    )))
+
+    if   final >= 0.70: rating, action = "⭐⭐⭐ 强烈关注", "watch_breakout"
+    elif final >= 0.55: rating, action = "⭐⭐ 值得关注",   "watch_pullback"
+    elif final >= 0.40: rating, action = "⭐ 中性观望",    "neutral_wait"
+    else:               rating, action = "❌ 建议回避",    "avoid"
+
+    return {
+        "code": code,
+        "name": snapshot.get("name", ""),
+        "final_score": final,
+        "rating": rating,
+        "action_bias": action,
+        "agents": {
+            "market":      {"score": round(m_score, 3),  "weight": 0.35, "signals": m_signals},
+            "fundamental": {"score": round(f_score, 3),  "weight": 0.30, "signals": f_signals},
+            "sentiment":   {"score": round(s_score, 3),  "weight": 0.20, "signals": s_signals},
+            "risk":        {"penalty": round(r_penalty, 3), "weight": -0.15, "signals": r_signals},
+        },
+    }
+
+
 def _fetch_market_data() -> List[Dict[str, Any]]:
     """Fetch all A-shares from AKShare (primary) or EastMoney (fallback).
     Called outside the lock so concurrent requests get stale cache, not blocked."""
@@ -2855,7 +3069,7 @@ def _fetch_market_data() -> List[Dict[str, Any]]:
             except Exception:
                 break
 
-    return stocks
+    return _apply_cross_sectional_scoring(stocks)
 
 
 def get_full_market_snapshot() -> List[Dict[str, Any]]:
@@ -2999,6 +3213,25 @@ CHAT_TOOLS: List[Dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "score_stock",
+            "description": (
+                "对单只A股运行完整4-Agent评分：Agent1=技术动量（RSI/MACD/均线），"
+                "Agent2=基本面（ROE/PE/PB/净利增速），Agent3=市场情绪（主力资金流向/量比），"
+                "Agent4=风险惩罚（超买/接近涨停/ST）。返回0-1综合得分、评级和各Agent细节。"
+                "调用时机：screen_stocks筛选+get_stock_data验证后，对最终候选股做深度评分排序。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "code": {"type": "string", "description": "6位A股代码，如 '000001'"},
+                },
+                "required": ["code"],
+            },
+        },
+    },
 ]
 
 
@@ -3101,6 +3334,16 @@ def execute_tool_call(name: str, args: Dict[str, Any], market_context: Optional[
         code = str(args.get("code", "")).strip().zfill(6)
         return fetch_stock_fundamentals(code)
 
+    if name == "score_stock":
+        code = str(args.get("code", "")).strip().zfill(6)
+        try:
+            snap = build_snapshot(code, include_llm=False)
+            fundamentals = fetch_stock_fundamentals(code)
+            fund_flow = fetch_stock_fund_flow(code)
+            return score_stock_multiagent(code, snap, fundamentals, fund_flow)
+        except Exception as exc:
+            return {"error": str(exc), "code": code}
+
     return {"error": f"Unknown tool: {name}"}
 
 
@@ -3194,6 +3437,7 @@ _TOOL_STATUS: Dict[str, str] = {
     "get_sector_stocks": "正在获取板块内个股行情…",
     "get_capital_flow": "正在获取主力资金流向…",
     "get_fundamentals": "正在获取财务基本面数据…",
+    "score_stock": "正在运行4-Agent综合评分（技术/基本面/情绪/风险）…",
 }
 
 
@@ -3298,6 +3542,7 @@ def open_chat(payload: ChatPayload, authorization: Optional[str] = Header(None))
         "  • get_sector_stocks —— 获取某板块内所有个股今日行情",
         "  • get_capital_flow —— 获取某股票近10日主力资金净流入趋势",
         "  • get_fundamentals —— 获取某股票的财务基本面：ROE/PE/PB/毛利率/资产负债率/净利润增速（验证基本面质量必用）",
+        "  • score_stock —— 对单只股票运行4-Agent综合评分（技术动量0.35/基本面0.30/情绪0.20/风险-0.15），返回0-1得分和⭐评级，选股最终验证步骤",
         "【选股因子规则（参考Qlib/Backtrader量化框架）】",
         "  尾盘/隔夜选股必须同时满足：",
         "  ① 涨幅 +2%~+7%（避开涨停板/跌停板，避免追高）",
@@ -3306,10 +3551,11 @@ def open_chat(payload: ChatPayload, authorization: Optional[str] = Header(None))
         "  ④ 成交额 ≥ 1亿（流动性门槛）",
         "  ⑤ sort_by=quality_score 排序，取前20名后再用 get_stock_data 验证RSI<75（未超买）",
         "  ⑥ 高质量选股可用 get_fundamentals 验证：ROE>10%、净利润增速>0%、资产负债率<70%",
+        "  ⑦ 对最终3-5只候选股调用 score_stock 进行4-Agent深度评分，按 final_score 排序，优先推荐⭐⭐⭐评级",
         "  严禁推荐：涨幅>9%的涨停股、ST股、今日首日上市股、量比<0.5的缩量股",
         "【重要规则】",
         "  (1) 绝不要求用户手动粘贴或提供行情数据——你有工具可以自己拿",
-        "  (2) 推荐股票必须走完：screen_stocks筛选 → get_stock_data验证RSI/MACD → 给出推荐，不能凭空编造",
+        "  (2) 推荐股票必须走完：screen_stocks筛选 → get_stock_data验证RSI/MACD → score_stock最终评分 → 给出推荐，不能凭空编造",
         "  (3) 若 screen_stocks 返回 data_status='unavailable'，立即停止重试，告知用户数据源不可用",
         "  (4) 若缺少某日个股数据（如历史日期），如实说明并基于可用数据作答",
         "",
