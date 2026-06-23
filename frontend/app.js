@@ -1,4 +1,4 @@
-const DEFAULT_API_BASE = "https://summermax-alpha-api.onrender.com";
+const DEFAULT_API_BASE = `${window.location.origin}`;
 
 const apiBaseInput = document.getElementById("apiBase");
 const stockCodeInput = document.getElementById("stockCode");
@@ -371,7 +371,9 @@ function t(key) {
 }
 
 const savedApiBase = localStorage.getItem("summermax-alpha-api-base");
-if (savedApiBase) {
+if (location.hostname.includes("onrender.com")) {
+  apiBaseInput.value = DEFAULT_API_BASE;
+} else if (savedApiBase) {
   apiBaseInput.value = savedApiBase;
 } else {
   apiBaseInput.value = DEFAULT_API_BASE;

@@ -1,4 +1,4 @@
-const DEFAULT_API_BASE = "https://summermax-alpha-api.onrender.com";
+const DEFAULT_API_BASE = `${window.location.origin}`;
 const EM_URL = "https://82.push2.eastmoney.com/api/qt/clist/get";
 const HISTORY_KEY = "summermax-alpha-chat-history";
 
@@ -8,7 +8,8 @@ let isLoggedIn = false;
 
 function getApiBase() {
   const saved = localStorage.getItem("summermax-alpha-api-base");
-  return (saved || DEFAULT_API_BASE).trim().replace(/\/+$/, "");
+  const preferred = location.hostname.includes("onrender.com") ? DEFAULT_API_BASE : (saved || DEFAULT_API_BASE);
+  return preferred.trim().replace(/\/+$/, "");
 }
 
 function getToken() {

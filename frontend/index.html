@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SummerMax Alpha · A股智能分析平台</title>
-    <link rel="stylesheet" href="/app/theme.css?v=20260624-ux2" />
+    <link rel="stylesheet" href="/app/theme.css?v=20260624-hotfix2" />
     <style>
       :root {
         --bg: #07111f;
@@ -977,8 +977,8 @@
 
     </div>
 
-    <script src="/app/theme.js?v=20260624-ux2"></script>
-    <script src="/app/home.js?v=20260624-ux2"></script>
+    <script src="/app/theme.js?v=20260624-hotfix2"></script>
+    <script src="/app/home.js?v=20260624-hotfix2"></script>
     <script>
       // ── Welcome modal ────────────────────────────────────────────────────────
       (function() {
@@ -1038,8 +1038,11 @@
 
       // ── Market bar ───────────────────────────────────────────────────────────
       (function loadMarketBar() {
-        const DEFAULT_API_BASE = "https://summermax-alpha-api.onrender.com";
-        const apiBase = (localStorage.getItem("summermax-alpha-api-base") || DEFAULT_API_BASE).trim().replace(/\/+$/, "");
+        const DEFAULT_API_BASE = window.location.origin;
+        const preferredApiBase = location.hostname.includes("onrender.com")
+          ? DEFAULT_API_BASE
+          : (localStorage.getItem("summermax-alpha-api-base") || DEFAULT_API_BASE);
+        const apiBase = preferredApiBase.trim().replace(/\/+$/, "");
         const barEl = document.getElementById("marketBarInner");
         const heroUpEl = document.getElementById("heroUpCount");
 
