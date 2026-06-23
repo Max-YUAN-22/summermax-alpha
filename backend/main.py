@@ -2697,85 +2697,132 @@ def extract_stock_mentions(message: str, universe: pd.DataFrame) -> List[Dict[st
 FULL_MARKET_CACHE: Dict[str, Any] = {"data": None, "loaded_at": None}
 FULL_MARKET_TTL = timedelta(minutes=15)
 _CACHE_LOCK = threading.Lock()
+_FETCH_IN_PROGRESS = threading.Event()
+
+
+def _fetch_market_data() -> List[Dict[str, Any]]:
+    """Fetch all A-shares from AKShare (primary) or EastMoney (fallback).
+    Called outside the lock so concurrent requests get stale cache, not blocked."""
+    stocks: List[Dict[str, Any]] = []
+
+    # Primary: AKShare one-shot (returns ~5500 stocks)
+    try:
+        df = ak.stock_zh_a_spot_em()
+        if df is not None and not df.empty:
+            for _, row in df.iterrows():
+                code = str(row.get("代码") or "").zfill(6)
+                if not code or code == "000000":
+                    continue
+                price = safe_float(row.get("最新价")) or 0
+                if price <= 0:
+                    continue
+                chg = safe_float(row.get("涨跌幅")) or 0
+                vol_ratio = safe_float(row.get("量比")) or 0
+                turnover = safe_float(row.get("换手率")) or 0
+                amount = safe_float(row.get("成交额")) or 0
+                # Qlib-style composite quality score:
+                # reward moderate gain + high vol_ratio + healthy turnover
+                # penalise near-limit stocks (>9%) and very low volume
+                quality = 0.0
+                if 0 < chg < 9:
+                    quality += min(chg, 7) * 0.3
+                if vol_ratio > 1:
+                    quality += min(vol_ratio, 5) * 0.4
+                if 2 <= turnover <= 15:
+                    quality += turnover * 0.15
+                if amount >= 1e8:
+                    quality += 1.0
+                stocks.append({
+                    "code": code,
+                    "name": str(row.get("名称") or ""),
+                    "price": price,
+                    "change_percent": chg,
+                    "amount": amount,
+                    "turnover_rate": turnover,
+                    "vol_ratio": vol_ratio,
+                    "rise_speed": safe_float(row.get("涨速")) or 0,
+                    "quality_score": round(quality, 2),
+                })
+    except Exception:
+        pass
+
+    # Fallback: EastMoney direct pagination
+    if not stocks:
+        _fs = "m:0+t:6,m:0+t:13,m:0+t:80,m:1+t:2,m:1+t:23"
+        seen: set = set()
+        for page in range(1, 13):
+            try:
+                resp = requests.get(
+                    "https://82.push2.eastmoney.com/api/qt/clist/get",
+                    params={
+                        "pn": page, "pz": "500", "po": "1", "np": "1",
+                        "ut": "bd1d9ddb04089700cf9c27f6f7426281",
+                        "fltt": "2", "invt": "2", "fid": "f3", "fs": _fs,
+                        "fields": "f2,f3,f6,f8,f10,f11,f12,f14",
+                    },
+                    headers={**DEFAULT_HEADERS, "Referer": "https://quote.eastmoney.com/center/boardlist.html"},
+                    timeout=12,
+                )
+                resp.raise_for_status()
+                diffs = (resp.json().get("data") or {}).get("diff") or []
+                if not diffs:
+                    break
+                for item in diffs:
+                    code = str(item.get("f12") or "").zfill(6)
+                    if not code or code == "000000" or code in seen:
+                        continue
+                    seen.add(code)
+                    price = safe_float(item.get("f2")) or 0
+                    if price <= 0:
+                        continue
+                    chg = safe_float(item.get("f3")) or 0
+                    vol_ratio = safe_float(item.get("f10")) or 0
+                    turnover = safe_float(item.get("f8")) or 0
+                    amount = safe_float(item.get("f6")) or 0
+                    quality = 0.0
+                    if 0 < chg < 9:
+                        quality += min(chg, 7) * 0.3
+                    if vol_ratio > 1:
+                        quality += min(vol_ratio, 5) * 0.4
+                    if 2 <= turnover <= 15:
+                        quality += turnover * 0.15
+                    if amount >= 1e8:
+                        quality += 1.0
+                    stocks.append({
+                        "code": code,
+                        "name": str(item.get("f14") or ""),
+                        "price": price,
+                        "change_percent": chg,
+                        "amount": amount,
+                        "turnover_rate": turnover,
+                        "vol_ratio": vol_ratio,
+                        "rise_speed": safe_float(item.get("f11")) or 0,
+                        "quality_score": round(quality, 2),
+                    })
+            except Exception:
+                break
+
+    return stocks
 
 
 def get_full_market_snapshot() -> List[Dict[str, Any]]:
-    with _CACHE_LOCK:
-        entry = FULL_MARKET_CACHE
-        if entry["data"] and entry["loaded_at"] and datetime.now() - entry["loaded_at"] < FULL_MARKET_TTL:
-            return entry["data"]
-
-        # Primary: AKShare (one call, all A-shares)
-        stocks: List[Dict[str, Any]] = []
+    entry = FULL_MARKET_CACHE
+    # Return cached data if still fresh
+    if entry["data"] and entry["loaded_at"] and datetime.now() - entry["loaded_at"] < FULL_MARKET_TTL:
+        return entry["data"]
+    # If another thread is already fetching, return stale cache immediately
+    if not _FETCH_IN_PROGRESS.is_set():
+        _FETCH_IN_PROGRESS.set()
         try:
-            df = ak.stock_zh_a_spot_em()
-            if df is not None and not df.empty:
-                for _, row in df.iterrows():
-                    code = str(row.get("代码") or "").zfill(6)
-                    if not code or code == "000000":
-                        continue
-                    price = safe_float(row.get("最新价")) or 0
-                    if price <= 0:
-                        continue
-                    stocks.append({
-                        "code": code,
-                        "name": str(row.get("名称") or ""),
-                        "price": price,
-                        "change_percent": safe_float(row.get("涨跌幅")) or 0,
-                        "amount": safe_float(row.get("成交额")) or 0,
-                        "turnover_rate": safe_float(row.get("换手率")) or 0,
-                        "vol_ratio": safe_float(row.get("量比")) or 0,
-                        "rise_speed": safe_float(row.get("涨速")) or 0,
-                    })
-        except Exception:
-            pass
+            stocks = _fetch_market_data()
+            if stocks:
+                with _CACHE_LOCK:
+                    FULL_MARKET_CACHE["data"] = stocks
+                    FULL_MARKET_CACHE["loaded_at"] = datetime.now()
+        finally:
+            _FETCH_IN_PROGRESS.clear()
+    return FULL_MARKET_CACHE.get("data") or []
 
-        # Fallback: EastMoney direct pagination (if AKShare failed or returned empty)
-        if not stocks:
-            _fs = "m:0+t:6+f:!50,m:0+t:13+f:!50,m:0+t:80+f:!50,m:1+t:2+f:!50,m:1+t:23+f:!50"
-            seen: set = set()
-            for page in range(1, 12):
-                try:
-                    resp = requests.get(
-                        "https://82.push2.eastmoney.com/api/qt/clist/get",
-                        params={
-                            "pn": page, "pz": "500", "po": "1", "np": "1",
-                            "ut": "bd1d9ddb04089700cf9c27f6f7426281",
-                            "fltt": "2", "invt": "2", "fid": "f3", "fs": _fs,
-                            "fields": "f2,f3,f6,f8,f10,f11,f12,f14",
-                        },
-                        headers={**DEFAULT_HEADERS, "Referer": "https://quote.eastmoney.com/center/boardlist.html"},
-                        timeout=10,
-                    )
-                    resp.raise_for_status()
-                    diffs = (resp.json().get("data") or {}).get("diff") or []
-                    if not diffs:
-                        break
-                    for item in diffs:
-                        code = str(item.get("f12") or "").zfill(6)
-                        if not code or code == "000000" or code in seen:
-                            continue
-                        seen.add(code)
-                        price = safe_float(item.get("f2")) or 0
-                        if price <= 0:
-                            continue
-                        stocks.append({
-                            "code": code,
-                            "name": str(item.get("f14") or ""),
-                            "price": price,
-                            "change_percent": safe_float(item.get("f3")) or 0,
-                            "amount": safe_float(item.get("f6")) or 0,
-                            "turnover_rate": safe_float(item.get("f8")) or 0,
-                            "vol_ratio": safe_float(item.get("f10")) or 0,
-                            "rise_speed": safe_float(item.get("f11")) or 0,
-                        })
-                except Exception:
-                    break
-
-        if stocks:
-            FULL_MARKET_CACHE["data"] = stocks
-            FULL_MARKET_CACHE["loaded_at"] = datetime.now()
-        return stocks if stocks else (entry["data"] or [])
 
 
 def _prewarm_market_cache() -> None:
@@ -2814,8 +2861,8 @@ CHAT_TOOLS: List[Dict[str, Any]] = [
                     "min_vol_ratio": {"type": "number", "description": "最小量比"},
                     "sort_by": {
                         "type": "string",
-                        "enum": ["change_percent", "amount", "turnover_rate", "vol_ratio"],
-                        "description": "排序字段，默认 change_percent",
+                        "enum": ["quality_score", "change_percent", "amount", "turnover_rate", "vol_ratio"],
+                        "description": "排序字段，尾盘选股推荐用 quality_score（综合因子得分），其次 change_percent",
                     },
                     "limit": {"type": "integer", "description": "返回数量，默认30，最多50"},
                 },
@@ -2916,7 +2963,7 @@ def execute_tool_call(name: str, args: Dict[str, Any], market_context: Optional[
             result = [s for s in result if (s.get("turnover_rate") or 0) <= max_turn]
         if min_volr is not None:
             result = [s for s in result if (s.get("vol_ratio") or 0) >= min_volr]
-        sort_key = args.get("sort_by", "change_percent")
+        sort_key = args.get("sort_by", "quality_score")
         result.sort(key=lambda x: x.get(sort_key) or 0, reverse=True)
         limit = min(int(args.get("limit", 30)), 50)
         return {
@@ -3156,26 +3203,34 @@ def open_chat(payload: ChatPayload, authorization: Optional[str] = Header(None))
     lines = [
         f"你是专业的A股短中线投资分析助手，当前时间 {now_str}（北京时间）。",
         session_note,
-        "【数据范围】系统今日已拉取全量A股实时行情，数据列在下方。对于历史日期，系统仅能提供指数收盘数据，无个股完整历史行情。",
+        "【数据范围】系统今日已拉取全量A股实时行情（5000+只），数据列在下方。",
         "【工具能力】你有权主动调用以下工具获取实时数据，无需等用户提供：",
-        "  • screen_stocks —— 从4500+只A股中按涨幅/成交额/换手率/量比筛选，支持多条件组合",
+        "  • screen_stocks —— 从5000+只A股中按涨幅/成交额/换手率/量比/质量分筛选，sort_by=quality_score可按综合因子排序",
         "  • get_stock_data —— 获取某只股票的完整技术指标（RSI/MACD/KDJ/均线）、综合评分、操作建议",
         "  • get_sector_overview —— 获取全部行业板块今日涨跌排名、资金流向、领涨股",
         "  • get_sector_stocks —— 获取某板块内所有个股今日行情",
         "  • get_capital_flow —— 获取某股票近10日主力资金净流入趋势",
+        "【选股因子规则（参考Qlib/Backtrader量化框架）】",
+        "  尾盘/隔夜选股必须同时满足：",
+        "  ① 涨幅 +2%~+7%（避开涨停板/跌停板，避免追高）",
+        "  ② 量比 ≥ 1.5（成交量放大，有主力参与）",
+        "  ③ 换手率 3%~15%（流动性合理，避开过冷/过热）",
+        "  ④ 成交额 ≥ 1亿（流动性门槛）",
+        "  ⑤ sort_by=quality_score 排序，取前20名后再用 get_stock_data 验证RSI<75（未超买）",
+        "  严禁推荐：涨幅>9%的涨停股、ST股、今日首日上市股、量比<0.5的缩量股",
         "【重要规则】",
         "  (1) 绝不要求用户手动粘贴或提供行情数据——你有工具可以自己拿",
-        "  (2) 若用户要求推荐股票，必须先调用 screen_stocks 筛选，再用 get_stock_data 验证关键标的，然后基于实际数据给出推荐，不能凭空编造",
-        "  (3) 若 screen_stocks 返回 data_status='unavailable'，立即停止重试，直接告知用户数据源暂时不可用，不要反复调用同一工具",
+        "  (2) 推荐股票必须走完：screen_stocks筛选 → get_stock_data验证RSI/MACD → 给出推荐，不能凭空编造",
+        "  (3) 若 screen_stocks 返回 data_status='unavailable'，立即停止重试，告知用户数据源不可用",
         "  (4) 若缺少某日个股数据（如历史日期），如实说明并基于可用数据作答",
         "",
         "每次推荐股票必须包含以下结构（不能省略）：",
-        "  股票代码 + 名称",
-        "  看多逻辑（产业/资金/技术三选一或组合）",
+        "  股票代码 + 名称 + 当前价格 + 今日涨幅",
+        "  看多逻辑（必须引用实际数据：量比X/换手率X%/RSI=X/MACD状态）",
         "  建议买入价区间（结合当前价格给具体数字）",
         "  T+1 目标价 / T+2 目标价（预计涨幅%）",
-        "  止损价位（明确的数字，不能说'跌破均线'这种模糊表述）",
-        "  退出条件（止盈或止损触发后的操作）",
+        "  止损价位（明确数字，跌破立即出）",
+        "  退出条件",
         "",
         "用中文回答，结构清晰。仅供参考，不构成投资建议。",
     ]
