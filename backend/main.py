@@ -3456,6 +3456,22 @@ def execute_tool_call(name: str, args: Dict[str, Any], market_context: Optional[
 
 # ── New endpoints ──────────────────────────────────────────────────────────────
 
+class MarketStocksPushPayload(BaseModel):
+    stocks: List[Dict[str, Any]]
+
+@app.post("/market/stocks/push")
+def push_market_stocks(payload: MarketStocksPushPayload) -> Dict[str, Any]:
+    """Accept full market snapshot pushed from the browser (which can reach EastMoney
+    from China IPs). Populates FULL_MARKET_CACHE so screen_stocks tool works."""
+    stocks = [s for s in payload.stocks if s.get("code") and (s.get("price") or s.get("change_percent") is not None)]
+    if not stocks:
+        raise HTTPException(status_code=400, detail="No valid stocks in payload.")
+    scored = _apply_cross_sectional_scoring(stocks)
+    with _CACHE_LOCK:
+        FULL_MARKET_CACHE["data"] = scored
+        FULL_MARKET_CACHE["loaded_at"] = datetime.now()
+    return {"accepted": len(scored), "cached_at": FULL_MARKET_CACHE["loaded_at"].strftime("%Y-%m-%d %H:%M:%S")}
+
 @app.get("/market/stocks")
 def get_market_stocks() -> Dict[str, Any]:
     """Full A-share market snapshot — proxied from EastMoney with server-side cache."""

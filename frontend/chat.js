@@ -155,7 +155,7 @@ const ALL_STOCK_FS = [
   "m:1+t:23+f:!50",
 ].join(",");
 
-const STOCK_FIELDS = "f2,f3,f6,f8,f10,f11,f12,f14";
+const STOCK_FIELDS = "f2,f3,f6,f8,f10,f11,f12,f14,f23,f115,f116";
 
 async function fetchAllStocks() {
   // Single quick backend check — only use if cache is full (1000+ stocks).
@@ -197,6 +197,9 @@ async function fetchAllStocks() {
       turnover_rate: Number(diff.f8) || 0,
       vol_ratio: Number(diff.f10) || 0,
       rise_speed: Number(diff.f11) || 0,
+      pb_ratio: diff.f23 != null ? Number(diff.f23) / 100 : null,
+      pe_ratio: diff.f115 != null && Number(diff.f115) > 0 && Number(diff.f115) < 1000000 ? Number(diff.f115) / 100 : null,
+      total_market_cap: diff.f116 != null ? Number(diff.f116) : null,
     });
   }
   return stocks;
@@ -314,6 +317,8 @@ async function initMatrix() {
     const aiCtx = buildAIStockContext(aiStocks);
     marketCtx = { ...marketCtx, top_movers: aiCtx, total_stocks: allStocks.length };
     aiContextNoteEl.textContent = `AI 已读取 ${allStocks.length} 只 · 精选 ${aiCtx.length} 只入上下文`;
+    // Push full stock universe to backend so screen_stocks tool has complete data
+    pushStocksToBackend(allStocks);
     // Unlock send button once market data is ready
     sendBtnEl.disabled = false;
     chatInputEl.placeholder = "问我任何关于今日A股的问题，或让我直接推荐票…";
@@ -323,6 +328,22 @@ async function initMatrix() {
     sendBtnEl.disabled = false;
     chatInputEl.placeholder = "问我任何关于今日A股的问题，或让我直接推荐票…";
   }
+}
+
+function pushStocksToBackend(stocks) {
+  const payload = stocks.map((s) => ({
+    code: s.code, name: s.name, price: s.price,
+    change_percent: s.change_percent, amount: s.amount,
+    turnover_rate: s.turnover_rate, vol_ratio: s.vol_ratio,
+    pe_ratio: s.pe_ratio ?? null, pb_ratio: s.pb_ratio ?? null,
+    total_market_cap: s.total_market_cap ?? null,
+    quality_score: s.quality_score ?? 0,
+  }));
+  fetch(`${getApiBase()}/market/stocks/push`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ stocks: payload }),
+  }).catch(() => {});
 }
 
 function buildAIStockContext(stocks) {
