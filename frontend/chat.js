@@ -138,6 +138,7 @@ async function emGet(params) {
   Object.entries({ ...base, ...params }).forEach(([k, v]) => url.searchParams.set(k, v));
   const res = await fetch(url.toString(), {
     headers: { "Referer": "https://quote.eastmoney.com/center/boardlist.html" },
+    signal: AbortSignal.timeout(20000),
   });
   const data = await res.json();
   return (data.data || {}).diff || [];
@@ -156,16 +157,31 @@ const ALL_STOCK_FS = [
 const STOCK_FIELDS = "f2,f3,f6,f8,f10,f11,f12,f14";
 
 async function fetchAllStocks() {
-  // Primary: go through our backend (avoids EastMoney CORS / Referer restrictions)
-  try {
-    const res = await fetch(`${getApiBase()}/market/stocks`);
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data.stocks) && data.stocks.length > 10) return data.stocks;
+  // Retry backend up to 3 times — market cache warms in ~20s after server restart.
+  // If the server just restarted and /market/stocks returns [] (cache still building),
+  // we wait and retry rather than falling to EastMoney (which may CORS-block on GH Pages).
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) {
+      if (matrixLoadingEl) {
+        matrixLoadingEl.innerHTML = `<div>市场缓存预热中，稍后自动重试（${attempt}/2）…<div style="margin-top:6px;font-size:0.72rem;color:var(--muted-2)">服务器已启动，数据约需 20-30 秒完成加载</div></div>`;
+      }
+      await new Promise(r => setTimeout(r, 20000));
     }
-  } catch { /* backend sleeping, fall through to direct */ }
+    try {
+      const res = await fetch(`${getApiBase()}/market/stocks`, {
+        signal: AbortSignal.timeout(25000),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.stocks) && data.stocks.length > 10) return data.stocks;
+      }
+    } catch { /* timeout or network, retry */ }
+  }
 
-  // Fallback: call EastMoney directly (9 pages × 500)
+  // Backend gave empty 3× — try EastMoney direct as last resort
+  if (matrixLoadingEl) {
+    matrixLoadingEl.innerHTML = `<div>正在从备用数据源加载…</div>`;
+  }
   const PAGE_SIZE = 500;
   const PAGES = 9;
   const pages = await Promise.all(
@@ -299,7 +315,7 @@ function renderMatrix() {
 
 async function initMatrix() {
   try {
-    matrixLoadingEl.innerHTML = `<div>正在连接服务器并加载全市场数据…<div style="margin-top:6px;font-size:0.72rem;color:var(--muted-2)">首次访问服务器冷启动约需 30-60 秒，请稍候</div></div>`;
+    matrixLoadingEl.innerHTML = `<div>正在加载全市场行情数据…<div style="margin-top:6px;font-size:0.72rem;color:var(--muted-2)">服务器首次启动后数据约需 20-30 秒完成缓存，自动重试中</div></div>`;
     allStocks = await fetchAllStocks();
     matrixLoadingEl.style.display = "none";
     renderMatrix();
