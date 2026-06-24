@@ -131,13 +131,15 @@ function renderMd(raw) {
 // ── EastMoney fetch helper ────────────────────────────────────────────────────
 
 async function emGet(params) {
-  const url = new URL(EM_URL);
+  // Build raw URL string — URLSearchParams encodes + as %2B and ! as %21,
+  // both of which break EastMoney's fs filter syntax (same issue as scan.js).
   const base = {
     np: "1", fltt: "2", invt: "2",
     ut: "bd1d9ddb04089700cf9c27f6f7426281",
   };
-  Object.entries({ ...base, ...params }).forEach(([k, v]) => url.searchParams.set(k, v));
-  const res = await fetch(url.toString(), {
+  const merged = { ...base, ...params };
+  const qs = Object.entries(merged).map(([k, v]) => `${k}=${v}`).join("&");
+  const res = await fetch(`${EM_URL}?${qs}`, {
     headers: { "Referer": "https://quote.eastmoney.com/center/boardlist.html" },
     signal: AbortSignal.timeout(20000),
   });
