@@ -602,6 +602,23 @@
       .footer-links-title { font-size: 0.7rem; font-weight: 700; color: var(--muted-2); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 4px; }
 
       /* ══════════════════════════════════════
+         MARKET SWITCHER TABS
+      ══════════════════════════════════════ */
+      .mkt-sw { display: flex; gap: 3px; }
+      .mkt-sw-btn {
+        padding: 3px 9px; border-radius: 6px;
+        border: 1px solid transparent; background: transparent;
+        color: var(--muted-2); font-size: 0.68rem; font-weight: 700;
+        cursor: pointer; font-family: inherit; letter-spacing: 0.03em;
+        transition: color 0.12s, background 0.12s, border-color 0.12s;
+      }
+      .mkt-sw-btn:hover { color: var(--text); background: rgba(255,255,255,0.05); }
+      .mkt-sw-btn.active {
+        background: rgba(102,209,255,0.12); color: var(--accent);
+        border-color: rgba(102,209,255,0.20);
+      }
+
+      /* ══════════════════════════════════════
          RESPONSIVE
       ══════════════════════════════════════ */
       @media (max-width: 1100px) {
@@ -732,8 +749,15 @@
         <div class="hero-right">
           <div class="data-card">
             <div class="card-hd">
-              <span class="card-hd-title">实时指数</span>
-              <span style="font-size:0.68rem;color:var(--muted-2)" id="overviewTime">--</span>
+              <div>
+                <span class="card-hd-title">实时指数</span>
+                <span style="font-size:0.65rem;color:var(--muted-2);display:block;margin-top:2px" id="overviewTime"></span>
+              </div>
+              <div class="mkt-sw">
+                <button class="mkt-sw-btn active" data-mkt="a">A股</button>
+                <button class="mkt-sw-btn" data-mkt="hk">港股</button>
+                <button class="mkt-sw-btn" data-mkt="us">美股</button>
+              </div>
             </div>
             <div id="homeIndices">
               <div class="index-row"><div class="skeleton" style="width:80px;height:14px"></div><div class="skeleton" style="width:60px;height:14px"></div></div>
@@ -744,8 +768,8 @@
 
           <div class="data-card">
             <div class="card-hd">
-              <span class="card-hd-title">今日强势板块</span>
-              <a href="/scan" class="card-hd-link">查看全部 →</a>
+              <span class="card-hd-title" id="sectorCardTitle">今日强势板块</span>
+              <a href="/scan" class="card-hd-link" id="sectorCardLink">查看全部 →</a>
             </div>
             <div id="homeSectors">
               <div class="skeleton" style="width:110px;height:26px;border-radius:999px"></div>
@@ -1074,17 +1098,6 @@
           .catch(() => {
             barEl.innerHTML = `<span class="mkt-loading">市场数据暂不可用（服务启动中）</span>`;
           });
-
-        // Fetch market stats for hero up-count
-        fetch(`${apiBase}/market/stocks`)
-          .then(r => r.json())
-          .then(data => {
-            const stocks = Array.isArray(data.stocks) ? data.stocks : [];
-            if (!stocks.length) return;
-            const up = stocks.filter(s => Number(s.change_percent) > 0).length;
-            if (heroUpEl) heroUpEl.textContent = up.toLocaleString();
-          })
-          .catch(() => {});
       })();
     </script>
   </body>
