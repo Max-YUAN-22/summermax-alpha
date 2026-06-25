@@ -153,6 +153,7 @@ const ALL_STOCK_FS = [
   "m:0+t:6+f:!50",
   "m:0+t:13+f:!50",
   "m:0+t:80+f:!50",
+  "m:0+t:81+f:!50",
   "m:1+t:2+f:!50",
   "m:1+t:23+f:!50",
 ].join(",");
@@ -259,7 +260,7 @@ function _rsi(closes, period = 14) {
 
 async function fetchKlineCloses(code) {
   const mkt = /^[69]/.test(code) ? 1 : 0;
-  const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${mkt}.${code}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58&klt=101&fqt=1&beg=0&end=20500101&lmt=30`;
+  const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${mkt}.${code}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58&klt=101&fqt=1&beg=0&end=20500101&lmt=60`;
   const res = await fetch(url, {
     headers: { "Referer": "https://quote.eastmoney.com/" },
     signal: AbortSignal.timeout(8000),
