@@ -212,16 +212,16 @@ function selectForAI(stocks) {
   const gainers = [...tradeable]
     .filter((s) => s.change_percent > 0.5 && s.change_percent < 9.9)
     .sort((a, b) => b.change_percent - a.change_percent)
-    .slice(0, 120);
-  const byAmount = [...tradeable].sort((a, b) => b.amount - a.amount).slice(0, 50);
+    .slice(0, 50);
+  const byAmount = [...tradeable].sort((a, b) => b.amount - a.amount).slice(0, 25);
   const byTurnover = [...tradeable]
     .filter((s) => s.turnover_rate > 0)
     .sort((a, b) => b.turnover_rate - a.turnover_rate)
-    .slice(0, 30);
+    .slice(0, 15);
   const beaten = [...tradeable]
     .filter((s) => s.change_percent < -3)
     .sort((a, b) => a.change_percent - b.change_percent)
-    .slice(0, 20);
+    .slice(0, 10);
   const seen = new Set();
   const result = [];
   for (const s of [...gainers, ...byAmount, ...byTurnover, ...beaten]) {
@@ -230,7 +230,98 @@ function selectForAI(stocks) {
   return result;
 }
 
-// ── Matrix UI ─────────────────────────────────────────────────────────────────
+// ── Client-side technical indicators (browser fetches EastMoney kline directly) ─
+
+function _ema(closes, period) {
+  if (closes.length < period) return null;
+  const k = 2 / (period + 1);
+  let v = closes.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  for (let i = period; i < closes.length; i++) v = closes[i] * k + v * (1 - k);
+  return v;
+}
+
+function _rsi(closes, period = 14) {
+  if (closes.length < period + 1) return null;
+  let ag = 0, al = 0;
+  for (let i = 1; i <= period; i++) {
+    const d = closes[i] - closes[i - 1];
+    if (d >= 0) ag += d; else al -= d;
+  }
+  ag /= period; al /= period;
+  for (let i = period + 1; i < closes.length; i++) {
+    const d = closes[i] - closes[i - 1];
+    ag = (ag * (period - 1) + (d >= 0 ? d : 0)) / period;
+    al = (al * (period - 1) + (d < 0 ? -d : 0)) / period;
+  }
+  if (al === 0) return 100;
+  return Math.round((100 - 100 / (1 + ag / al)) * 10) / 10;
+}
+
+async function fetchKlineCloses(code) {
+  const mkt = /^[69]/.test(code) ? 1 : 0;
+  const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${mkt}.${code}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58&klt=101&fqt=1&beg=0&end=20500101&lmt=30`;
+  const res = await fetch(url, {
+    headers: { "Referer": "https://quote.eastmoney.com/" },
+    signal: AbortSignal.timeout(8000),
+  });
+  const data = await res.json();
+  return ((data.data || {}).klines || []).map(k => parseFloat(k.split(",")[2])).filter(v => v > 0);
+}
+
+async function enrichAllStocksBackground(allStocksArr) {
+  const aiCtxCodes = new Set(selectForAI(allStocksArr).map((s) => s.code));
+  const tradeable = allStocksArr.filter((s) => s.price > 0 && s.name);
+  const sorted = [
+    ...tradeable.filter((s) => aiCtxCodes.has(s.code)),
+    ...tradeable.filter((s) => !aiCtxCodes.has(s.code)),
+  ];
+
+  const CONCURRENCY = 30;
+  let enrichedCount = 0;
+  let lastPush = Date.now();
+  let aiContextUpdated = false;
+
+  for (let i = 0; i < sorted.length; i += CONCURRENCY) {
+    await Promise.allSettled(sorted.slice(i, i + CONCURRENCY).map(async (s) => {
+      try {
+        const c = await fetchKlineCloses(s.code);
+        if (c.length < 20) return;
+        s.rsi14 = _rsi(c);
+        s.ma5  = Math.round(c.slice(-5).reduce((a, b) => a + b, 0) / 5 * 100) / 100;
+        s.ma20 = Math.round(c.slice(-20).reduce((a, b) => a + b, 0) / 20 * 100) / 100;
+        const e12 = _ema(c, 12), e26 = _ema(c, 26);
+        if (e12 != null && e26 != null) {
+          s.macd_diff   = Math.round((e12 - e26) * 1000) / 1000;
+          s.macd_golden = e12 > e26;
+        }
+        enrichedCount++;
+      } catch {}
+    }));
+
+    // Once AI-context stocks are done, push updated context immediately
+    if (!aiContextUpdated && i + CONCURRENCY >= aiCtxCodes.size) {
+      aiContextUpdated = true;
+      const enrichedAi = selectForAI(allStocksArr);
+      marketCtx = { ...marketCtx, top_movers: buildAIStockContext(enrichedAi) };
+    }
+
+    aiContextNoteEl.textContent = `正在计算 RSI/MACD：${enrichedCount}/${sorted.length} 只`;
+
+    if (Date.now() - lastPush > 5000) {
+      pushStocksToBackend(allStocksArr);
+      lastPush = Date.now();
+    }
+
+    // Yield to browser event loop so UI stays responsive
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  pushStocksToBackend(allStocksArr);
+  marketCtx = { ...marketCtx, top_movers: buildAIStockContext(selectForAI(allStocksArr)) };
+  aiContextNoteEl.textContent = `全量 RSI/MACD 就绪：${enrichedCount}/${sorted.length} 只`;
+}
+
+
 
 let allStocks = [];
 let displayStocks = [];
@@ -315,18 +406,20 @@ async function initMatrix() {
     allStocks = await fetchAllStocks();
     matrixLoadingEl.style.display = "none";
     renderMatrix();
+
     const aiStocks = selectForAI(allStocks);
-    const aiCtx = buildAIStockContext(aiStocks);
-    marketCtx = { ...marketCtx, top_movers: aiCtx, total_stocks: allStocks.length };
-    aiContextNoteEl.textContent = `AI 已读取 ${allStocks.length} 只 · 精选 ${aiCtx.length} 只入上下文`;
-    // Push full stock universe to backend so screen_stocks tool has complete data
+    // Phase 1: push basic data immediately so AI can respond right away
+    marketCtx = { ...marketCtx, top_movers: buildAIStockContext(aiStocks), total_stocks: allStocks.length };
     pushStocksToBackend(allStocks);
-    // Unlock send button once market data is ready
     sendBtnEl.disabled = false;
     chatInputEl.placeholder = "问我任何关于今日A股的问题，或让我直接推荐票…";
+    aiContextNoteEl.textContent = `AI 已读取 ${allStocks.length} 只 · 精选 ${aiStocks.length} 只 · 正在计算 RSI/MACD…`;
+
+    // Phase 2: enrich ALL stocks with client-side kline indicators (non-blocking)
+    // aiStocks objects are shared references with allStocks, so mutations propagate automatically.
+    enrichAllStocksBackground(allStocks);
   } catch (err) {
     matrixLoadingEl.innerHTML = `<div>加载失败：${err.message}<br><button onclick="initMatrix()" style="margin-top:10px;padding:6px 14px;border-radius:7px;border:1px solid rgba(102,209,255,0.22);background:rgba(102,209,255,0.08);color:var(--accent);cursor:pointer;font-size:0.78rem">重试</button></div>`;
-    // Allow sending even without market data
     sendBtnEl.disabled = false;
     chatInputEl.placeholder = "问我任何关于今日A股的问题，或让我直接推荐票…";
   }
@@ -340,6 +433,11 @@ function pushStocksToBackend(stocks) {
     pe_ratio: s.pe_ratio ?? null, pb_ratio: s.pb_ratio ?? null,
     total_market_cap: s.total_market_cap ?? null,
     quality_score: s.quality_score ?? 0,
+    rsi14: s.rsi14 ?? null,
+    ma5: s.ma5 ?? null,
+    ma20: s.ma20 ?? null,
+    macd_diff: s.macd_diff ?? null,
+    macd_golden: s.macd_golden ?? null,
   }));
   fetch(`${getApiBase()}/market/stocks/push`, {
     method: "POST",
@@ -349,11 +447,18 @@ function pushStocksToBackend(stocks) {
 }
 
 function buildAIStockContext(stocks) {
-  return stocks.map((s) => ({
-    code: s.code, name: s.name, price: s.price,
-    change_percent: s.change_percent, amount: s.amount,
-    turnover_rate: s.turnover_rate, vol_ratio: s.vol_ratio,
-  }));
+  return stocks.map((s) => {
+    const obj = {
+      code: s.code, name: s.name, price: s.price,
+      change_percent: s.change_percent, amount: s.amount,
+      turnover_rate: s.turnover_rate, vol_ratio: s.vol_ratio,
+    };
+    if (s.rsi14 != null) obj.rsi14 = s.rsi14;
+    if (s.macd_golden != null) obj.macd_golden = s.macd_golden;
+    if (s.ma5 != null) obj.ma5 = s.ma5;
+    if (s.ma20 != null) obj.ma20 = s.ma20;
+    return obj;
+  });
 }
 
 document.querySelectorAll(".sort-tab").forEach((btn) => {
@@ -745,9 +850,9 @@ async function sendMessage(text) {
   messagesEl.appendChild(thinkEl);
   messagesEl.scrollTop = messagesEl.scrollHeight;
 
-  // 150-second timeout with AbortController
+  // 240-second timeout with AbortController
   currentAbortController = new AbortController();
-  const timeoutId = setTimeout(() => currentAbortController.abort(), 150000);
+  const timeoutId = setTimeout(() => currentAbortController.abort(), 240000);
 
   // Streaming bubble placeholder (created once first token arrives)
   let streamBubble = null;
@@ -776,7 +881,7 @@ async function sendMessage(text) {
       headers: { "Content-Type": "application/json", ...getAuthHeaders() },
       body: JSON.stringify({
         message: text,
-        history: history.slice(-12).map((h) => ({ role: h.role, content: h.content })),
+        history: history.slice(-8).map((h) => ({ role: h.role, content: h.content })),
         market_context: marketCtx || undefined,
       }),
       signal: currentAbortController.signal,
@@ -838,14 +943,14 @@ async function sendMessage(text) {
         const bubbleEl = streamBubble.querySelector(".msg-bubble");
         const isAbort = err.name === "AbortError";
         if (bubbleEl) bubbleEl.textContent = isAbort
-          ? "请求超时（150秒）或已取消。请重试，或换用更快的模型（Haiku / GPT-4o Mini）。"
+          ? "请求超时（240秒）或已取消。请重试，或换用更快的模型（Haiku / GPT-4o Mini）。"
           : `请求失败：${err.message}`;
       }
     } else {
       thinkEl.remove();
       const isAbort = err.name === "AbortError";
       const errContent = isAbort
-        ? "请求超时（150秒）或已取消。请重试，或换用更快的模型（Haiku / GPT-4o Mini）。"
+        ? "请求超时（240秒）或已取消。请重试，或换用更快的模型（Haiku / GPT-4o Mini）。"
         : `网络错误：${err.message}`;
       const errMsg = { role: "assistant", content: errContent, ts: Date.now() };
       const updated = getHistory();

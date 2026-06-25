@@ -6,7 +6,7 @@ import secrets
 import smtplib
 import sqlite3
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, wait as futures_wait
 from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -1358,7 +1358,15 @@ def to_market_prefix(code: str) -> str:
     return "sz"
 
 
+FUND_FLOW_CACHE: Dict[str, Any] = {}
+FUND_FLOW_CACHE_TTL = timedelta(minutes=30)
+
+
 def fetch_stock_fund_flow(code: str) -> Dict[str, Any]:
+    entry = FUND_FLOW_CACHE.get(code)
+    if entry and datetime.now() - entry["loaded_at"] < FUND_FLOW_CACHE_TTL:
+        return entry["data"]
+
     market = to_market_prefix(code)
     errors: List[str] = []
 
@@ -1382,7 +1390,7 @@ def fetch_stock_fund_flow(code: str) -> Dict[str, Any]:
                     "close": safe_float(row["收盘价"]),
                 }
             )
-        return {
+        result = {
             "status": "ok",
             "latest": {
                 "date": str(latest["日期"]),
@@ -1396,6 +1404,8 @@ def fetch_stock_fund_flow(code: str) -> Dict[str, Any]:
             "series": series,
             "source": "akshare.stock_individual_fund_flow",
         }
+        FUND_FLOW_CACHE[code] = {"data": result, "loaded_at": datetime.now()}
+        return result
     except Exception as exc:
         errors.append(f"individual fund flow failed: {exc}")
 
@@ -1405,7 +1415,7 @@ def fetch_stock_fund_flow(code: str) -> Dict[str, Any]:
         if matched.empty:
             raise ValueError("No main-fund-flow ranking entry for this code.")
         row = matched.iloc[0]
-        return {
+        result = {
             "status": "fallback_rank",
             "latest": {
                 "date": datetime.now().strftime("%Y-%m-%d"),
@@ -1428,6 +1438,8 @@ def fetch_stock_fund_flow(code: str) -> Dict[str, Any]:
             "series": [],
             "source": "akshare.stock_main_fund_flow",
         }
+        FUND_FLOW_CACHE[code] = {"data": result, "loaded_at": datetime.now()}
+        return result
     except Exception as exc:
         errors.append(f"main fund flow failed: {exc}")
 
@@ -3444,9 +3456,13 @@ def execute_tool_call(name: str, args: Dict[str, Any], market_context: Optional[
     if name == "score_stock":
         code = str(args.get("code", "")).strip().zfill(6)
         try:
-            snap = build_snapshot(code, include_llm=False)
-            fundamentals = fetch_stock_fundamentals(code)
-            fund_flow = fetch_stock_fund_flow(code)
+            with ThreadPoolExecutor(max_workers=3) as _stex:
+                _f_snap = _stex.submit(build_snapshot, code, False)
+                _f_fund = _stex.submit(fetch_stock_fundamentals, code)
+                _f_flow = _stex.submit(fetch_stock_fund_flow, code)
+                snap = _f_snap.result()
+                fundamentals = _f_fund.result()
+                fund_flow = _f_flow.result()
             return score_stock_multiagent(code, snap, fundamentals, fund_flow)
         except Exception as exc:
             return {"error": str(exc), "code": code}
@@ -3674,13 +3690,13 @@ def open_chat(payload: ChatPayload, authorization: Optional[str] = Header(None))
         "  ② 量比 ≥ 1.5（成交量放大，有主力参与）",
         "  ③ 换手率 3%~15%（流动性合理，避开过冷/过热）",
         "  ④ 成交额 ≥ 1亿（流动性门槛）",
-        "  ⑤ sort_by=quality_score 排序，取前20名后再用 get_stock_data 验证RSI<75（未超买）",
+        "  ⑤ sort_by=quality_score 排序，取前20名；【重要】若 screen_stocks 结果中已含 rsi14 字段，直接用该值判断（无需再调 get_stock_data），否则再调 get_stock_data 验证RSI<75",
         "  ⑥ 高质量选股可用 get_fundamentals 验证：ROE>10%、净利润增速>0%、资产负债率<70%",
         "  ⑦ 对最终3-5只候选股调用 score_stock 进行4-Agent深度评分，按 final_score 排序，优先推荐⭐⭐⭐评级",
         "  严禁推荐：涨幅>9%的涨停股、ST股、今日首日上市股、量比<0.5的缩量股",
         "【重要规则】",
         "  (1) 绝不要求用户手动粘贴或提供行情数据——你有工具可以自己拿",
-        "  (2) 推荐股票必须走完：screen_stocks筛选 → get_stock_data验证RSI/MACD → score_stock最终评分 → 给出推荐，不能凭空编造",
+        "  (2) 推荐股票必须走完：screen_stocks筛选 → （若结果缺少rsi14则调get_stock_data补充指标）→ score_stock最终评分 → 给出推荐，不能凭空编造",
         "  (3) 若 screen_stocks 返回 data_status='unavailable'，立即停止重试，告知用户数据源不可用",
         "  (4) 若缺少某日个股数据（如历史日期），如实说明并基于可用数据作答",
         "",
@@ -3791,11 +3807,11 @@ def open_chat(payload: ChatPayload, authorization: Optional[str] = Header(None))
                     {"role": m["role"], "content": m["content"]}
                     for m in messages if m["role"] != "system"
                 ]
-                for _round in range(5):
+                for _round in range(3):
                     yield _sse({"type": "status", "msg": "AI 正在思考…"})
                     resp = client.messages.create(
                         model=active_model, system=ant_system,
-                        messages=ant_msgs, tools=anthropic_tools, max_tokens=2000,
+                        messages=ant_msgs, tools=anthropic_tools, max_tokens=600,
                     )
                     if resp.stop_reason == "tool_use":
                         tool_use_blocks = [b for b in resp.content if b.type == "tool_use"]
@@ -3806,14 +3822,23 @@ def open_chat(payload: ChatPayload, authorization: Optional[str] = Header(None))
                                        + [{"type": "tool_use", "id": b.id, "name": b.name, "input": b.input}
                                           for b in tool_use_blocks],
                         })
-                        tool_results = []
+                        # Yield status for all pending tool calls before executing
                         for b in tool_use_blocks:
                             yield _sse({"type": "status", "msg": _TOOL_STATUS.get(b.name, f"正在调用 {b.name}…")})
-                            result = execute_tool_call(b.name, b.input, payload.market_context)
-                            tool_results.append({
-                                "type": "tool_result", "tool_use_id": b.id,
-                                "content": json.dumps(result, ensure_ascii=False, default=str),
-                            })
+                        # Execute tool calls concurrently; send SSE keepalives while waiting
+                        # so Render's load balancer doesn't drop the connection during long AKShare calls.
+                        def _run_ant_tool(tb):
+                            result = execute_tool_call(tb.name, tb.input, payload.market_context)
+                            return {"type": "tool_result", "tool_use_id": tb.id,
+                                    "content": json.dumps(result, ensure_ascii=False, default=str)}
+                        with ThreadPoolExecutor(max_workers=min(len(tool_use_blocks), 4)) as _tex:
+                            futures = [_tex.submit(_run_ant_tool, b) for b in tool_use_blocks]
+                            pending = set(futures)
+                            while pending:
+                                done, pending = futures_wait(pending, timeout=4)
+                                if pending:
+                                    yield ": keepalive\n\n"
+                            tool_results = [f.result() for f in futures]
                         ant_msgs.append({"role": "user", "content": tool_results})
                     else:
                         break
@@ -3828,12 +3853,12 @@ def open_chat(payload: ChatPayload, authorization: Optional[str] = Header(None))
 
             else:
                 # ── OpenAI: non-streaming tool rounds, then streaming final ────
-                for _round in range(5):
+                for _round in range(3):
                     yield _sse({"type": "status", "msg": "AI 正在思考…"})
                     resp = client.chat.completions.create(
                         model=active_model, messages=messages,
                         tools=CHAT_TOOLS, tool_choice="auto",
-                        max_tokens=2000, temperature=0.7,
+                        max_tokens=600, temperature=0.7,
                     )
                     choice = resp.choices[0]
                     if choice.finish_reason == "tool_calls":
@@ -3847,17 +3872,27 @@ def open_chat(payload: ChatPayload, authorization: Optional[str] = Header(None))
                                 for tc in tool_calls
                             ],
                         })
+                        # Yield status for all pending tool calls before executing
                         for tc in tool_calls:
-                            try:
-                                args = json.loads(tc.function.arguments or "{}")
-                            except json.JSONDecodeError:
-                                args = {}
                             yield _sse({"type": "status", "msg": _TOOL_STATUS.get(tc.function.name, f"正在调用 {tc.function.name}…")})
-                            result = execute_tool_call(tc.function.name, args, payload.market_context)
-                            messages.append({
-                                "role": "tool", "tool_call_id": tc.id,
-                                "content": json.dumps(result, ensure_ascii=False, default=str),
-                            })
+                        # Execute tool calls concurrently; send SSE keepalives while waiting
+                        def _run_oai_tool(tc):
+                            try:
+                                tc_args = json.loads(tc.function.arguments or "{}")
+                            except json.JSONDecodeError:
+                                tc_args = {}
+                            result = execute_tool_call(tc.function.name, tc_args, payload.market_context)
+                            return {"role": "tool", "tool_call_id": tc.id,
+                                    "content": json.dumps(result, ensure_ascii=False, default=str)}
+                        with ThreadPoolExecutor(max_workers=min(len(tool_calls), 4)) as _tex:
+                            futures = [_tex.submit(_run_oai_tool, tc) for tc in tool_calls]
+                            pending = set(futures)
+                            while pending:
+                                done, pending = futures_wait(pending, timeout=4)
+                                if pending:
+                                    yield ": keepalive\n\n"
+                            tool_msgs = [f.result() for f in futures]
+                        messages.extend(tool_msgs)
                     else:
                         break
                 # Streaming final response (no tools)
